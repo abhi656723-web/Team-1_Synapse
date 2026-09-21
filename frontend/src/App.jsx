@@ -1,5 +1,6 @@
 import { useState } from "react";
 import "./App.css";
+const API_URL = "http://127.0.0.1:8000";
 
 /* =========================================================
    TRAIN DATA
@@ -265,6 +266,7 @@ function App() {
      ------------------------------------------------------- */
 
   const [showResult, setShowResult] = useState(false);
+  const [prediction, setPrediction] = useState(null);
 
 
   /* -------------------------------------------------------
@@ -344,23 +346,56 @@ function App() {
      PREDICT
      ======================================================= */
 
-  const handlePredict = () => {
+  const handlePredict = async () => {
 
-    setShowResult(true);
+    try {
+      const finalTrainNumber =
+        trainMode === "select"
+          ? trainNumber
+          : manualTrain;
 
-    setTimeout(() => {
+      const finalStation =
+        stationMode === "select"
+          ? station
+          : manualStation;
 
-      document
-        .getElementById("prediction-result")
-        ?.scrollIntoView({
-          behavior: "smooth",
-          block: "start",
-        });
+      const response = await fetch(`${API_URL}/predict`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          train_number: Number(finalTrainNumber),
+          station_code: finalStation,
+          journey_date: date,
+        }),
+      });
 
-    }, 100);
+      if (!response.ok) {
+        throw new Error("Prediction request failed");
+      }
+
+      const data = await response.json();
+
+
+      setPrediction(data);
+
+      setShowResult(true);
+
+      setTimeout(() => {
+        document
+          .getElementById("prediction-result")
+          ?.scrollIntoView({
+            behavior: "smooth",
+            block: "start",
+          });
+      }, 100);
+
+    } catch (error) {
+      console.error("Prediction error:", error);
+      alert("Unable to generate a prediction for the selected train, station, or date.");
+    }
   };
-
-
   /* =======================================================
      DISPLAY VALUES
      ======================================================= */
@@ -952,7 +987,7 @@ function App() {
 
 
           <p className="demo-note">
-            Demo interface — prediction model connection will be added later.
+            Live prediction powered by the Synapse AI model.
           </p>
 
         </section>
@@ -1009,11 +1044,11 @@ function App() {
                   <div>
 
                     <div className="confidence-label">
-                      Model Confidence
+                      Prediction Status
                     </div>
 
                     <div className="confidence-value">
-                      98%
+                      Ready
                     </div>
 
                   </div>
@@ -1052,14 +1087,14 @@ function App() {
                 </div>
 
                 <div className="delay-number">
-                  261
+                  {prediction?.predicted_delay_minutes ?? "--"}
                   <span>
                     min
                   </span>
                 </div>
 
                 <div className="delay-status">
-                  Significant delay expected
+                  {prediction?.status_advisory ?? "Prediction pending"}
                 </div>
 
               </div>
@@ -1080,7 +1115,7 @@ function App() {
                   </span>
 
                   <strong>
-                    13:30
+                    {prediction?.scheduled_arrival ?? "--:--"}
                   </strong>
 
                   <small>
@@ -1114,7 +1149,7 @@ function App() {
                   </span>
 
                   <strong>
-                    17:51
+                    {prediction?.expected_actual_arrival ?? "--:--"}
                   </strong>
 
                   <small>

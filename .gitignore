@@ -4,13 +4,13 @@ __pycache__/
 *.class
 
 # Trained models & large binaries
-*.pkl
-*.joblib
 
+*.joblib
 # Large datasets (keep scripts and docs, exclude large raw CSVs if >50MB)
 *.csv
 
 # Environment & IDE
 .venv/
 env/
+backend/venv/
 .vscode/

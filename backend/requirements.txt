@@ -1,0 +1,11 @@
+# Core framework for building high-performance APIs
+fastapi>=0.110.0
+
+# ASGI server used to run and serve the FastAPI application
+uvicorn[standard]>=0.28.0
+
+# Machine Learning & Data Processing dependencies for model inference
+joblib>=1.3.0
+pandas>=2.0.0
+scikit-learn==1.9.0
+numpy>=1.26.0
