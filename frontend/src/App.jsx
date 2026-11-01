@@ -1,11 +1,36 @@
-import { useState } from "react";
+
+import React, { useEffect, useMemo, useState } from "react";
 import "./App.css";
 
-const API_URL = "http://127.0.0.1:8000";
+const API_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 
-/* =========================================================
-   TRAIN DATA
-   ========================================================= */
+// Logo path: place Synapse-logo.png inside the public folder.
+const LOGO_URL = `${import.meta.env.BASE_URL}Synapse-logo.png`;
+
+const KEYS = {
+  theme: "synapse-theme",
+  favorites: "synapse-favorites",
+  recent: "synapse-recent",
+  history: "synapse-history",
+  prefs: "synapse-preferences"
+};
+
+const readStore = (key, fallback) => {
+  try {
+    const v = localStorage.getItem(key);
+    return v ? JSON.parse(v) : fallback;
+  } catch {
+    return fallback;
+  }
+};
+
+const writeStore = (key, value) => {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    /* storage unavailable */
+  }
+};
 
 const trains = [
   {
@@ -15,31 +40,30 @@ const trains = [
     stations: [
       ["TVC", "Thiruvananthapuram Central"],
       ["VAK", "Varkala Sivagiri"],
-      ["QLN", "Kollam Junction"],
-      ["KYJ", "Kayamkulam Junction"],
+      ["QLN", "Kollam Jn"],
+      ["KYJ", "Kayamkulam Jn"],
       ["MVLK", "Mavelikara"],
       ["CNGR", "Chengannur"],
       ["TRVL", "Tiruvalla"],
       ["CGY", "Changanasseri"],
       ["KTYM", "Kottayam"],
-      ["VARD", "Vaikom Road"],
       ["ERN", "Ernakulam Town"],
       ["AWY", "Aluva"],
       ["TCR", "Thrissur"],
       ["OTP", "Ottapalam"],
-      ["PGT", "Palakkad"],
-      ["CBE", "Coimbatore"],
+      ["PGT", "Palakkad Jn"],
+      ["CBE", "Coimbatore Jn"],
       ["TUP", "Tiruppur"],
-      ["ED", "Erode"],
-      ["SA", "Salem"],
+      ["ED", "Erode Jn"],
+      ["SA", "Salem Jn"],
       ["JTJ", "Jolarpettai"],
-      ["KPD", "Katpadi"],
+      ["KPD", "Katpadi Jn"],
       ["CTO", "Chittoor"],
       ["TPTY", "Tirupati"],
-      ["RU", "Renigunta"],
-      ["GDR", "Gudur"],
+      ["RU", "Renigunta Jn"],
+      ["GDR", "Gudur Jn"],
       ["NLR", "Nellore"],
-      ["BZA", "Vijayawada"],
+      ["BZA", "Vijayawada Jn"],
       ["WL", "Warangal"],
       ["RDM", "Ramagundam"],
       ["SKZR", "Sirpur Kaghaznagar"],
@@ -47,17 +71,17 @@ const trains = [
       ["CD", "Chandrapur"],
       ["SEGM", "Sewagram"],
       ["NGP", "Nagpur"],
-      ["ET", "Itarsi"],
-      ["BPL", "Bhopal"],
-      ["BINA", "Bina"],
-      ["VGLJ", "Virangana Lakshmibai Jhansi"],
-      ["GWL", "Gwalior"],
+      ["ET", "Itarsi Jn"],
+      ["BPL", "Bhopal Jn"],
+      ["BINA", "Bina Jn"],
+      ["VGLJ", "VGL Jhansi"],
+      ["GWL", "Gwalior Jn"],
       ["AGC", "Agra Cantt"],
-      ["MTJ", "Mathura"],
+      ["MTJ", "Mathura Jn"],
       ["FDB", "Faridabad"],
       ["NZM", "Hazrat Nizamuddin"],
-      ["NDLS", "New Delhi"],
-    ],
+      ["NDLS", "New Delhi"]
+    ]
   },
   {
     number: "12623",
@@ -65,2037 +89,1903 @@ const trains = [
     route: "Chennai Central → New Delhi",
     stations: [
       ["MAS", "Chennai Central"],
-      ["GDR", "Gudur"],
-      ["BZA", "Vijayawada"],
+      ["GDR", "Gudur Jn"],
+      ["NLR", "Nellore"],
+      ["OGL", "Ongole"],
+      ["BZA", "Vijayawada Jn"],
+      ["KMT", "Khammam"],
       ["WL", "Warangal"],
+      ["BPQ", "Balharshah"],
       ["NGP", "Nagpur"],
-      ["BPL", "Bhopal"],
+      ["ET", "Itarsi Jn"],
+      ["BPL", "Bhopal Jn"],
+      ["VGLJ", "VGL Jhansi"],
+      ["GWL", "Gwalior Jn"],
+      ["AGC", "Agra Cantt"],
+      ["MTJ", "Mathura Jn"],
+      ["NDLS", "New Delhi"]
+    ]
+  },
+  {
+    number: "12951",
+    name: "Mumbai Rajdhani",
+    route: "Mumbai Central → New Delhi",
+    stations: [
+      ["MMCT", "Mumbai Central"],
+      ["BVI", "Borivali"],
+      ["ST", "Surat"],
+      ["BRC", "Vadodara Jn"],
+      ["RTM", "Ratlam Jn"],
+      ["KOTA", "Kota Jn"],
+      ["NDLS", "New Delhi"]
+    ]
+  },
+  {
+    number: "12002",
+    name: "Bhopal Shatabdi",
+    route: "New Delhi → Rani Kamlapati",
+    stations: [
       ["NDLS", "New Delhi"],
-    ],
+      ["MTJ", "Mathura Jn"],
+      ["AGC", "Agra Cantt"],
+      ["DHO", "Dholpur"],
+      ["MRA", "Morena"],
+      ["GWL", "Gwalior Jn"],
+      ["VGLJ", "VGL Jhansi"],
+      ["BINA", "Bina Jn"],
+      ["BPL", "Bhopal Jn"],
+      ["RKMP", "Rani Kamlapati"]
+    ]
+  },
+  {
+    number: "22436",
+    name: "Vande Bharat Express",
+    route: "New Delhi → Varanasi",
+    stations: [
+      ["NDLS", "New Delhi"],
+      ["CNB", "Kanpur Central"],
+      ["PRYJ", "Prayagraj Jn"],
+      ["BSB", "Varanasi Jn"]
+    ]
+  },
+  {
+    number: "12273",
+    name: "Howrah Duronto",
+    route: "Howrah → New Delhi",
+    stations: [
+      ["HWH", "Howrah Jn"],
+      ["ASN", "Asansol Jn"],
+      ["JSME", "Jasidih Jn"],
+      ["PNBE", "Patna Jn"],
+      ["DDU", "Pt DD Upadhyaya Jn"],
+      ["CNB", "Kanpur Central"],
+      ["NDLS", "New Delhi"]
+    ]
+  },
+  {
+    number: "12810",
+    name: "Howrah Mail",
+    route: "Mumbai CSMT → Howrah",
+    stations: [
+      ["CSMT", "Mumbai CSMT"],
+      ["DR", "Dadar"],
+      ["TNA", "Thane"],
+      ["KYN", "Kalyan Jn"],
+      ["KSRA", "Kasara"],
+      ["IGP", "Igatpuri"],
+      ["NK", "Nashik Road"],
+      ["MMR", "Manmad Jn"],
+      ["JL", "Jalgaon Jn"],
+      ["BSL", "Bhusaval Jn"],
+      ["AK", "Akola Jn"],
+      ["BD", "Badnera Jn"],
+      ["WR", "Wardha Jn"],
+      ["NGP", "Nagpur"],
+      ["G", "Gondia Jn"],
+      ["DURG", "Durg"],
+      ["R", "Raipur Jn"],
+      ["BSP", "Bilaspur Jn"],
+      ["JSG", "Jharsuguda Jn"],
+      ["ROU", "Rourkela"],
+      ["TATA", "Tatanagar Jn"],
+      ["KGP", "Kharagpur Jn"],
+      ["SRC", "Santragachi Jn"],
+      ["HWH", "Howrah Jn"]
+    ]
   },
   {
     number: "16345",
     name: "Netravati Express",
     route: "Thiruvananthapuram → Lokmanya Tilak",
     stations: [
-      ["TVC", "Thiruvananthapuram Central"],
-      ["QLN", "Kollam Junction"],
-      ["ERS", "Ernakulam"],
+      ["TVC", "Thiruvananthapuram"],
+      ["QLN", "Kollam Jn"],
+      ["KYJ", "Kayamkulam Jn"],
+      ["ALLP", "Alappuzha"],
+      ["ERS", "Ernakulam Jn"],
+      ["AWY", "Aluva"],
       ["TCR", "Thrissur"],
+      ["SRR", "Shoranur Jn"],
+      ["TIR", "Tirur"],
+      ["CLT", "Kozhikode"],
+      ["BDJ", "Vadakara"],
+      ["TLY", "Thalassery"],
+      ["CAN", "Kannur"],
+      ["PAY", "Payyanur"],
+      ["KZE", "Kanhangad"],
+      ["KGQ", "Kasaragod"],
+      ["MAJN", "Mangaluru Jn"],
+      ["UD", "Udupi"],
+      ["KUDA", "Kundapura"],
+      ["BYNR", "Mookambika Road"],
+      ["BTJL", "Bhatkal"],
+      ["MRDW", "Murdeshwar"],
+      ["KT", "Kumta"],
+      ["KAWR", "Karwar"],
+      ["MAO", "Madgaon"],
+      ["KRMI", "Karmali"],
+      ["KUDL", "Kudal"],
+      ["RN", "Ratnagiri"],
+      ["CHI", "Chiplun"],
+      ["PNVL", "Panvel"],
+      ["TNA", "Thane"],
+      ["LTT", "Lokmanya Tilak Terminus"]
+    ]
+  },
+  {
+    number: "12615",
+    name: "Grand Trunk Express",
+    route: "Chennai Central → New Delhi",
+    stations: [
+      ["MAS", "Chennai Central"],
+      ["GDR", "Gudur Jn"],
+      ["NLR", "Nellore"],
+      ["OGL", "Ongole"],
+      ["TEL", "Tenali Jn"],
+      ["BZA", "Vijayawada Jn"],
+      ["KMT", "Khammam"],
+      ["WL", "Warangal"],
+      ["RDM", "Ramagundam"],
+      ["SKZR", "Sirpur Kaghaznagar"],
+      ["BPQ", "Balharshah"],
+      ["CD", "Chandrapur"],
+      ["WR", "Wardha Jn"],
+      ["NGP", "Nagpur"],
+      ["PAR", "Pandhurna"],
+      ["BZU", "Betul"],
+      ["ET", "Itarsi Jn"],
+      ["BPL", "Bhopal Jn"],
+      ["BINA", "Bina Jn"],
+      ["VGLJ", "VGL Jhansi"],
+      ["GWL", "Gwalior Jn"],
+      ["AGC", "Agra Cantt"],
+      ["MTJ", "Mathura Jn"],
+      ["FDB", "Faridabad"],
+      ["NZM", "Hazrat Nizamuddin"],
+      ["NDLS", "New Delhi"]
+    ]
+  },
+  {
+    number: "12841",
+    name: "Coromandel Express",
+    route: "Shalimar → Chennai Central",
+    stations: [
+      ["SHM", "Shalimar"],
+      ["SRC", "Santragachi Jn"],
+      ["KGP", "Kharagpur Jn"],
+      ["BLS", "Baleshwar"],
+      ["BHC", "Bhadrak"],
+      ["JJKR", "Jajpur K Road"],
+      ["CTC", "Cuttack"],
+      ["BBS", "Bhubaneswar"],
+      ["KUR", "Khurda Road Jn"],
+      ["BAM", "Brahmapur"],
+      ["PSA", "Palasa"],
+      ["VSKP", "Visakhapatnam"],
+      ["RJY", "Rajahmundry"],
+      ["TDD", "Tadepalligudem"],
+      ["EE", "Eluru"],
+      ["BZA", "Vijayawada Jn"],
+      ["MAS", "Chennai Central"]
+    ]
+  },
+  {
+    number: "12137",
+    name: "Punjab Mail",
+    route: "Mumbai CSMT → Firozpur Cantt",
+    stations: [
+      ["CSMT", "Mumbai CSMT"],
+      ["DR", "Dadar"],
+      ["TNA", "Thane"],
+      ["KYN", "Kalyan Jn"],
+      ["KSRA", "Kasara"],
+      ["IGP", "Igatpuri"],
+      ["NK", "Nashik Road"],
+      ["MMR", "Manmad Jn"],
+      ["JL", "Jalgaon Jn"],
+      ["BSL", "Bhusaval Jn"],
+      ["BAU", "Burhanpur"],
+      ["KNW", "Khandwa"],
+      ["ET", "Itarsi Jn"],
+      ["BPL", "Bhopal Jn"],
+      ["BINA", "Bina Jn"],
+      ["VGLJ", "VGL Jhansi"],
+      ["GWL", "Gwalior Jn"],
+      ["AGC", "Agra Cantt"],
+      ["MTJ", "Mathura Jn"],
+      ["FDB", "Faridabad"],
+      ["NZM", "Hazrat Nizamuddin"],
+      ["NDLS", "New Delhi"],
+      ["BGZ", "Bahadurgarh"],
+      ["ROK", "Rohtak Jn"],
+      ["JIND", "Jind Jn"],
+      ["BTI", "Bathinda Jn"],
+      ["FDK", "Faridkot"],
+      ["FZR", "Firozpur Cantt"]
+    ]
+  },
+  {
+    number: "12301",
+    name: "Howrah Rajdhani",
+    route: "Howrah → New Delhi",
+    stations: [
+      ["HWH", "Howrah Jn"],
+      ["ASN", "Asansol Jn"],
+      ["DHN", "Dhanbad Jn"],
+      ["PNME", "Parasnath"],
+      ["GAYA", "Gaya Jn"],
+      ["DDU", "Pt DD Upadhyaya Jn"],
+      ["PRYJ", "Prayagraj Jn"],
+      ["CNB", "Kanpur Central"],
+      ["NDLS", "New Delhi"]
+    ]
+  },
+  {
+    number: "12627",
+    name: "Karnataka Express",
+    route: "Bengaluru → New Delhi",
+    stations: [
+      ["SBC", "KSR Bengaluru"],
+      ["BNC", "Bengaluru Cantt"],
+      ["YNK", "Yelahanka Jn"],
+      ["HUP", "Hindupur"],
+      ["DMM", "Dharmavaram Jn"],
+      ["ATP", "Anantapur"],
+      ["GTL", "Guntakal Jn"],
+      ["RC", "Raichur"],
+      ["WADI", "Wadi"],
+      ["KLBG", "Kalaburagi"],
+      ["SUR", "Solapur"],
+      ["DD", "Daund Jn"],
+      ["ANG", "Ahmednagar"],
+      ["BAP", "Belapur"],
+      ["KPG", "Kopargaon"],
+      ["MMR", "Manmad Jn"],
+      ["BSL", "Bhusawal Jn"],
+      ["KNW", "Khandwa"],
+      ["ET", "Itarsi Jn"],
+      ["BPL", "Bhopal Jn"],
+      ["BINA", "Bina Jn"],
+      ["VGLJ", "VGL Jhansi"],
+      ["GWL", "Gwalior Jn"],
+      ["AGC", "Agra Cantt"],
+      ["MTJ", "Mathura Jn"],
+      ["NZM", "Hazrat Nizamuddin"],
+      ["NDLS", "New Delhi"]
+    ]
+  },
+  {
+    number: "12925",
+    name: "Paschim Express",
+    route: "Bandra Terminus → Amritsar",
+    stations: [
+      ["BDTS", "Bandra Terminus"],
+      ["BVI", "Borivali"],
+      ["VAPI", "Vapi"],
+      ["BL", "Valsad"],
+      ["NVS", "Navsari"],
+      ["ST", "Surat"],
+      ["BH", "Bharuch Jn"],
+      ["BRC", "Vadodara Jn"],
+      ["GDA", "Godhra Jn"],
+      ["DHD", "Dahod"],
+      ["RTM", "Ratlam Jn"],
+      ["NAD", "Nagda Jn"],
+      ["KOTA", "Kota Jn"],
+      ["SWM", "Sawai Madhopur"],
+      ["GGC", "Gangapur City"],
+      ["BXN", "Bayana Jn"],
+      ["BTE", "Bharatpur Jn"],
+      ["MTJ", "Mathura Jn"],
+      ["FDB", "Faridabad"],
+      ["NZM", "Hazrat Nizamuddin"],
+      ["NDLS", "New Delhi"],
+      ["SZM", "Sabzi Mandi"],
+      ["SNP", "Sonipat"],
+      ["PNP", "Panipat Jn"],
+      ["UMB", "Ambala Cantt Jn"],
+      ["SIR", "Sirhind Jn"],
+      ["LDH", "Ludhiana Jn"],
+      ["PGW", "Phagwara Jn"],
+      ["JUC", "Jalandhar City"],
+      ["BEAS", "Beas"],
+      ["ASR", "Amritsar Jn"]
+    ]
+  },
+  {
+    number: "12727",
+    name: "Godavari Express",
+    route: "Visakhapatnam → Hyderabad",
+    stations: [
+      ["VSKP", "Visakhapatnam"],
+      ["DVD", "Duvvada"],
+      ["AKP", "Anakapalle"],
+      ["TUNI", "Tuni"],
+      ["ANV", "Annavaram"],
+      ["SLO", "Samalkot Jn"],
+      ["RJY", "Rajahmundry"],
+      ["NDD", "Nidadavolu Jn"],
+      ["TDD", "Tadepalligudem"],
+      ["EE", "Eluru"],
+      ["BZA", "Vijayawada Jn"],
+      ["KMT", "Khammam"],
+      ["MABD", "Mahbubabad"],
+      ["WL", "Warangal"],
+      ["KZJ", "Kazipet Jn"],
+      ["SC", "Secunderabad Jn"],
+      ["HYB", "Hyderabad Deccan"]
+    ]
+  },
+  {
+    number: "12295",
+    name: "Sanghamitra Express",
+    route: "SMVT Bengaluru → Danapur",
+    stations: [
+      ["SMVB", "SMVT Bengaluru"],
+      ["KJM", "Krishnarajapuram"],
+      ["BWT", "Bangarapet"],
+      ["JTJ", "Jolarpettai"],
+      ["KPD", "Katpadi Jn"],
+      ["AJJ", "Arakkonam Jn"],
+      ["MAS", "Chennai Central"],
+      ["GDR", "Gudur Jn"],
+      ["NLR", "Nellore"],
+      ["OGL", "Ongole"],
+      ["BZA", "Vijayawada Jn"],
+      ["KMT", "Khammam"],
+      ["WL", "Warangal"],
+      ["RDM", "Ramagundam"],
+      ["SKZR", "Sirpur Kaghaznagar"],
+      ["BPQ", "Balharshah"],
+      ["CD", "Chandrapur"],
+      ["SEGM", "Sewagram"],
+      ["NGP", "Nagpur"],
+      ["BZU", "Betul"],
+      ["ET", "Itarsi Jn"],
+      ["PPI", "Pipariya"],
+      ["NU", "Narsinghpur"],
+      ["JBP", "Jabalpur"],
+      ["KTE", "Katni"],
+      ["MYR", "Maihar"],
+      ["STA", "Satna"],
+      ["PCOI", "Prayagraj Chheoki"],
+      ["MZP", "Mirzapur"],
+      ["DDU", "Pt DD Upadhyaya Jn"],
+      ["DLN", "Dildarnagar Jn"],
+      ["BXR", "Buxar"],
+      ["ARA", "Ara Jn"],
+      ["DNR", "Danapur"]
+    ]
+  },
+  {
+    number: "11019",
+    name: "Konark Express",
+    route: "Mumbai CSMT → Bhubaneswar",
+    stations: [
+      ["CSMT", "Mumbai CSMT"],
+      ["DR", "Dadar"],
+      ["TNA", "Thane"],
+      ["KYN", "Kalyan Jn"],
+      ["KJT", "Karjat"],
+      ["LNL", "Lonavala"],
+      ["PUNE", "Pune Jn"],
+      ["DD", "Daund Jn"],
+      ["SUR", "Solapur"],
+      ["KLBG", "Kalaburagi"],
+      ["WADI", "Wadi"],
+      ["TDU", "Tandur"],
+      ["VKB", "Vikarabad Jn"],
+      ["SC", "Secunderabad Jn"],
+      ["KZJ", "Kazipet Jn"],
+      ["WL", "Warangal"],
+      ["MABD", "Mahbubabad"],
+      ["KMT", "Khammam"],
+      ["BZA", "Vijayawada Jn"],
+      ["EE", "Eluru"],
+      ["TDD", "Tadepalligudem"],
+      ["NDD", "Nidadavolu Jn"],
+      ["RJY", "Rajahmundry"],
+      ["SLO", "Samalkot Jn"],
+      ["TUNI", "Tuni"],
+      ["AKP", "Anakapalle"],
+      ["VSKP", "Visakhapatnam"],
+      ["VZM", "Vizianagaram Jn"],
+      ["CHE", "Srikakulam Road"],
+      ["PSA", "Palasa"],
+      ["BAM", "Brahmapur"],
+      ["BALU", "Balugaon"],
+      ["KUR", "Khurda Road Jn"],
+      ["BBS", "Bhubaneswar"]
+    ]
+  },
+  {
+    number: "12431",
+    name: "Trivandrum Rajdhani",
+    route: "Thiruvananthapuram → Hazrat Nizamuddin",
+    stations: [
+      ["TVC", "Thiruvananthapuram"],
+      ["QLN", "Kollam Jn"],
+      ["ALLP", "Alappuzha"],
+      ["ERS", "Ernakulam Jn"],
+      ["TCR", "Thrissur"],
+      ["SRR", "Shoranur Jn"],
       ["CLT", "Kozhikode"],
       ["CAN", "Kannur"],
-      ["MAQ", "Mangaluru"],
+      ["KGQ", "Kasaragod"],
+      ["MAJN", "Mangaluru Jn"],
       ["UD", "Udupi"],
       ["KAWR", "Karwar"],
+      ["MAO", "Madgaon"],
       ["RN", "Ratnagiri"],
       ["PNVL", "Panvel"],
-      ["LTT", "Lokmanya Tilak Terminus"],
-    ],
+      ["BSR", "Vasai Road"],
+      ["ST", "Surat"],
+      ["BRC", "Vadodara Jn"],
+      ["RTM", "Ratlam Jn"],
+      ["KOTA", "Kota Jn"],
+      ["NZM", "Hazrat Nizamuddin"]
+    ]
   },
+  {
+    number: "22691",
+    name: "Bengaluru Rajdhani",
+    route: "Bengaluru → Hazrat Nizamuddin",
+    stations: [
+      ["SBC", "KSR Bengaluru"],
+      ["SSPN", "Sri Sathya Sai Prashanthi Nilayam"],
+      ["DMM", "Dharmavaram Jn"],
+      ["GTL", "Guntakal Jn"],
+      ["RC", "Raichur"],
+      ["SC", "Secunderabad Jn"],
+      ["KZJ", "Kazipet Jn"],
+      ["BPQ", "Balharshah"],
+      ["NGP", "Nagpur"],
+      ["BPL", "Bhopal Jn"],
+      ["VGLJ", "VGL Jhansi"],
+      ["GWL", "Gwalior Jn"],
+      ["AGC", "Agra Cantt"],
+      ["NZM", "Hazrat Nizamuddin"]
+    ]
+  },
+  {
+    number: "12555",
+    name: "Gorakhdham Express",
+    route: "Gorakhpur → Bathinda",
+    stations: [
+      ["GKP", "Gorakhpur Jn"],
+      ["KLD", "Khalilabad"],
+      ["BST", "Basti"],
+      ["MUR", "Mankapur Jn"],
+      ["GD", "Gonda Jn"],
+      ["LKO", "Lucknow NR"],
+      ["ON", "Unnao Jn"],
+      ["CNB", "Kanpur Central"],
+      ["NDLS", "New Delhi"],
+      ["BGZ", "Bahadurgarh"],
+      ["ROK", "Rohtak Jn"],
+      ["KLNK", "Kalanaur Kalan"],
+      ["BNW", "Bhiwani Jn"],
+      ["HSR", "Hisar Jn"],
+      ["STD", "Sirsa"],
+      ["BTI", "Bathinda Jn"]
+    ]
+  }
 ];
 
-/* =========================================================
-   ICONS
-   ========================================================= */
+function useIstClock(timeFormat = "24h") {
+  const [now, setNow] = useState(new Date());
 
-function TrainIcon({ size = 21 }) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <rect x="5" y="3" width="14" height="15" rx="3" />
-      <path d="M5 12h14" />
-      <path d="M8 7h2" />
-      <path d="M14 7h2" />
-      <path d="M8 21l2-3" />
-      <path d="M16 21l-2-3" />
-      <circle cx="9" cy="14.5" r="1" />
-      <circle cx="15" cy="14.5" r="1" />
-    </svg>
-  );
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(new Date()), 1000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  return new Intl.DateTimeFormat("en-IN", {
+    timeZone: "Asia/Kolkata",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: timeFormat === "12h"
+  }).format(now);
 }
 
-function LocationIcon() {
+function Modal({ title, onClose, children, wide = false }) {
   return (
-    <svg
-      width="21"
-      height="21"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z" />
-      <circle cx="12" cy="10" r="2.5" />
-    </svg>
-  );
-}
-
-function CalendarIcon() {
-  return (
-    <svg
-      width="21"
-      height="21"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <rect x="3" y="5" width="18" height="16" rx="3" />
-      <path d="M16 3v4" />
-      <path d="M8 3v4" />
-      <path d="M3 10h18" />
-    </svg>
-  );
-}
-
-function SearchIcon() {
-  return (
-    <svg
-      width="17"
-      height="17"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <circle cx="11" cy="11" r="7" />
-      <path d="m20 20-4-4" />
-    </svg>
-  );
-}
-
-function ChevronDown() {
-  return (
-    <svg
-      width="17"
-      height="17"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="m6 9 6 6 6-6" />
-    </svg>
-  );
-}
-
-function ArrowRight() {
-  return (
-    <svg
-      width="19"
-      height="19"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M5 12h14" />
-      <path d="m13 6 6 6-6 6" />
-    </svg>
-  );
-}
-
-function ArrowLeft() {
-  return (
-    <svg
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M19 12H5" />
-      <path d="m11 18-6-6 6-6" />
-    </svg>
-  );
-}
-
-function ShieldIcon() {
-  return (
-    <svg
-      width="25"
-      height="25"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M12 3l7 3v5c0 4.8-2.9 8-7 10-4.1-2-7-5.2-7-10V6l7-3Z" />
-      <path d="m9 12 2 2 4-4" />
-    </svg>
-  );
-}
-
-function CheckIcon() {
-  return (
-    <svg
-      width="17"
-      height="17"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="m5 12 4 4L19 6" />
-    </svg>
-  );
-}
-
-/* =========================================================
-   LOGO
-   ========================================================= */
-
-function SynapseLogo({ small = false }) {
-  return (
-    <div className={`synapse-logo ${small ? "small" : ""}`}>
-      <img
-        src="/Synapse-logo.png"
-        alt="Synapse"
-        className="synapse-logo-image"
-      />
-
-      <div className="synapse-logo-text">
-        <div className="synapse-name">Synapse</div>
-
-        <div className="synapse-tagline">
-          AI Train Delay Prediction
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* =========================================================
-   MODERN TRAIN DROPDOWN
-   ========================================================= */
-
-function TrainDropdown({ value, onChange }) {
-  const [open, setOpen] = useState(false);
-  const [search, setSearch] = useState("");
-
-  const selected =
-    trains.find((train) => train.number === value) || trains[0];
-
-  const filtered = trains.filter((train) => {
-    const text =
-      `${train.number} ${train.name} ${train.route}`.toLowerCase();
-
-    return text.includes(search.toLowerCase());
-  });
-
-  return (
-    <div className="modern-dropdown">
-
-      <button
-        className={`dropdown-trigger ${open ? "open" : ""}`}
-        onClick={() => setOpen(!open)}
+    <div className="modal-backdrop" onMouseDown={onClose}>
+      <section
+        className={`modal ${wide ? "modal-wide" : ""}`}
+        onMouseDown={e => e.stopPropagation()}
       >
-
-        <div className="dropdown-left">
-
-          <div className="dropdown-icon">
-            <TrainIcon />
-          </div>
-
-          <div className="selected-text">
-
-            <strong>
-              {selected.number} — {selected.name}
-            </strong>
-
-            <span>
-              {selected.route}
-            </span>
-
-          </div>
-
-        </div>
-
-        <ChevronDown />
-
-      </button>
-
-      {open && (
-        <>
-
-          <div
-            className="dropdown-backdrop"
-            onClick={() => setOpen(false)}
-          />
-
-          <div className="dropdown-menu">
-
-            <div className="dropdown-search">
-
-              <SearchIcon />
-
-              <input
-                autoFocus
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search train..."
-              />
-
-            </div>
-
-            <div className="dropdown-list">
-
-              {filtered.map((train) => {
-
-                const active =
-                  train.number === selected.number;
-
-                return (
-                  <button
-                    key={train.number}
-                    className={`dropdown-option ${active ? "selected" : ""
-                      }`}
-                    onClick={() => {
-                      onChange(train.number);
-                      setOpen(false);
-                      setSearch("");
-                    }}
-                  >
-
-                    <div className="option-icon">
-                      <TrainIcon size={19} />
-                    </div>
-
-                    <div className="option-content">
-
-                      <strong>
-                        {train.number} — {train.name}
-                      </strong>
-
-                      <span>
-                        {train.route}
-                      </span>
-
-                    </div>
-
-                    {active && (
-                      <div className="option-check">
-                        <CheckIcon />
-                      </div>
-                    )}
-
-                  </button>
-                );
-              })}
-
-            </div>
-
-          </div>
-        </>
-      )}
-
-    </div>
-  );
-}
-
-/* =========================================================
-   MODERN STATION DROPDOWN
-   ========================================================= */
-
-function StationDropdown({
-  stations,
-  value,
-  onChange,
-}) {
-  const [open, setOpen] = useState(false);
-  const [search, setSearch] = useState("");
-
-  const selected =
-    stations.find((station) => station[0] === value) ||
-    stations[stations.length - 1];
-
-  const filtered = stations.filter(([code, name]) => {
-
-    const text =
-      `${code} ${name}`.toLowerCase();
-
-    return text.includes(search.toLowerCase());
-
-  });
-
-  return (
-    <div className="modern-dropdown">
-
-      <button
-        className={`dropdown-trigger ${open ? "open" : ""}`}
-        onClick={() => setOpen(!open)}
-      >
-
-        <div className="dropdown-left">
-
-          <div className="dropdown-icon station-icon">
-            <LocationIcon />
-          </div>
-
-          <div className="selected-text">
-
-            <strong>
-              {selected[0]} — {selected[1]}
-            </strong>
-
-            <span>
-              Station on selected train route
-            </span>
-
-          </div>
-
-        </div>
-
-        <ChevronDown />
-
-      </button>
-
-      {open && (
-        <>
-
-          <div
-            className="dropdown-backdrop"
-            onClick={() => setOpen(false)}
-          />
-
-          <div className="dropdown-menu station-menu">
-
-            <div className="dropdown-search">
-
-              <SearchIcon />
-
-              <input
-                autoFocus
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search station or code..."
-              />
-
-            </div>
-
-            <div className="dropdown-count">
-              {filtered.length} stations available
-            </div>
-
-            <div className="dropdown-list">
-
-              {filtered.map(([code, name]) => {
-
-                const active =
-                  code === selected[0];
-
-                return (
-                  <button
-                    key={code}
-                    className={`dropdown-option ${active ? "selected" : ""
-                      }`}
-                    onClick={() => {
-                      onChange(code);
-                      setOpen(false);
-                      setSearch("");
-                    }}
-                  >
-
-                    <div className="station-code">
-                      {code}
-                    </div>
-
-                    <div className="option-content">
-
-                      <strong>
-                        {name}
-                      </strong>
-
-                      <span>
-                        {code} station
-                      </span>
-
-                    </div>
-
-                    {active && (
-                      <div className="option-check">
-                        <CheckIcon />
-                      </div>
-                    )}
-
-                  </button>
-                );
-              })}
-
-            </div>
-
-          </div>
-
-        </>
-      )}
-
-    </div>
-  );
-}
-
-/* =========================================================
-   CALENDAR
-   ========================================================= */
-
-function CalendarPopup({
-  selectedDate,
-  onSelect,
-}) {
-  const [month, setMonth] = useState(6);
-  const [year, setYear] = useState(2026);
-
-  const monthNames = [
-    "January",
-    "February",
-    "March",
-    "April",
-    "May",
-    "June",
-    "July",
-    "August",
-    "September",
-    "October",
-    "November",
-    "December",
-  ];
-
-  const firstDay =
-    new Date(year, month, 1).getDay();
-
-  const daysInMonth =
-    new Date(year, month + 1, 0).getDate();
-
-  const changeMonth = (direction) => {
-
-    let newMonth = month + direction;
-    let newYear = year;
-
-    if (newMonth < 0) {
-      newMonth = 11;
-      newYear--;
-    }
-
-    if (newMonth > 11) {
-      newMonth = 0;
-      newYear++;
-    }
-
-    setMonth(newMonth);
-    setYear(newYear);
-  };
-
-  const days = [];
-
-  for (let i = 0; i < firstDay; i++) {
-
-    days.push(
-      <div key={`empty-${i}`} />
-    );
-
-  }
-
-  for (
-    let day = 1;
-    day <= daysInMonth;
-    day++
-  ) {
-
-    const formatted =
-      `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-
-    const active =
-      formatted === selectedDate;
-
-    days.push(
-
-      <button
-        key={day}
-        className={`calendar-day ${active ? "active" : ""
-          }`}
-        onClick={() =>
-          onSelect(formatted)
-        }
-      >
-        {day}
-      </button>
-
-    );
-
-  }
-
-  return (
-    <div className="calendar-popup">
-
-      <div className="calendar-top">
-
-        <div>
-
-          <span>
-            Select journey date
-          </span>
-
-          <strong>
-            {monthNames[month]} {year}
-          </strong>
-
-        </div>
-
-        <div className="calendar-nav">
-
-          <button
-            onClick={() =>
-              changeMonth(-1)
-            }
-          >
-            ‹
+        <header className="modal-head">
+          <h2>{title}</h2>
+          <button className="icon-button" onClick={onClose} aria-label="Close">
+            ×
           </button>
-
-          <button
-            onClick={() =>
-              changeMonth(1)
-            }
-          >
-            ›
-          </button>
-
-        </div>
-
-      </div>
-
-      <div className="calendar-weekdays">
-
-        {[
-          "Sun",
-          "Mon",
-          "Tue",
-          "Wed",
-          "Thu",
-          "Fri",
-          "Sat",
-        ].map((day) => (
-          <span key={day}>
-            {day}
-          </span>
-        ))}
-
-      </div>
-
-      <div className="calendar-grid">
-        {days}
-      </div>
-
+        </header>
+        {children}
+      </section>
     </div>
   );
 }
-
-/* =========================================================
-   REASON
-   ========================================================= */
-
-function Reason({
-  title,
-  impact,
-  percentage,
-  type,
-}) {
-  return (
-    <div className="reason">
-
-      <div className="reason-top">
-
-        <span className="reason-title">
-          {title}
-        </span>
-
-        <span className="reason-impact">
-          {impact}
-        </span>
-
-      </div>
-
-      <div className="reason-bar">
-
-        <div
-          className={`reason-progress ${type}`}
-          style={{
-            width: `${percentage}%`,
-          }}
-        />
-
-      </div>
-
-      <span className="reason-number">
-        {percentage}%
-      </span>
-
-    </div>
-  );
-}
-
-/* =========================================================
-   PREDICTION PAGE
-   ========================================================= */
-
-function PredictionPage({
-  trainNumber,
-  setTrainNumber,
-  station,
-  setStation,
-  date,
-  setDate,
-  onPredict,
-  loading,
-}) {
-  const [trainMode, setTrainMode] =
-    useState("select");
-
-  const [stationMode, setStationMode] =
-    useState("select");
-
-  const [dateMode, setDateMode] =
-    useState("calendar");
-
-  const [manualTrain, setManualTrain] =
-    useState("12625");
-
-  const [manualStation, setManualStation] =
-    useState("NDLS");
-
-  const [showCalendar, setShowCalendar] =
-    useState(false);
-
-  const selectedTrain =
-    trains.find(
-      (train) =>
-        train.number === trainNumber
-    ) || trains[0];
-
-  return (
-    <>
-
-      {/* =================================================
-          HERO
-          ================================================= */}
-
-      <section className="hero">
-
-        <div className="hero-inner">
-
-          <div className="hero-content">
-
-            <div className="hero-pill">
-              <span />
-              AI-POWERED PREDICTION
-            </div>
-
-            <h1>
-              Know your train's delay
-              <br />
-              <span>
-                before it happens.
-              </span>
-            </h1>
-
-            <p>
-              Select or enter your train, station and journey date.
-              <br />
-              Synapse predicts the expected arrival delay.
-            </p>
-
-          </div>
-
-          <div className="hero-logo">
-
-            <div className="hero-logo-circle circle-one" />
-
-            <div className="hero-logo-circle circle-two" />
-
-            <img
-              src="/Synapse-logo.png"
-              alt="Synapse train"
-            />
-
-          </div>
-
-        </div>
-
-      </section>
-
-      {/* =================================================
-          FORM
-          ================================================= */}
-
-      <main className="main-content">
-
-        <section className="prediction-card">
-
-          <div className="prediction-header">
-
-            <div className="prediction-title-area">
-
-              <div className="prediction-icon">
-                <TrainIcon size={24} />
-              </div>
-
-              <div>
-
-                <h2>
-                  Predict Train Delay
-                </h2>
-
-                <p>
-                  Enter your journey details below.
-                </p>
-
-              </div>
-
-            </div>
-
-            <div className="model-ready">
-
-              <span />
-
-              Model Ready
-
-            </div>
-
-          </div>
-
-          <div className="input-grid">
-
-            {/* =================================================
-                TRAIN
-                ================================================= */}
-
-            <div className="input-section">
-
-              <div className="input-label-row">
-
-                <label>
-                  Train Number
-                </label>
-
-                <div className="mode-toggle">
-
-                  <button
-                    className={
-                      trainMode === "select"
-                        ? "active"
-                        : ""
-                    }
-                    onClick={() =>
-                      setTrainMode("select")
-                    }
-                  >
-                    Select
-                  </button>
-
-                  <button
-                    className={
-                      trainMode === "manual"
-                        ? "active"
-                        : ""
-                    }
-                    onClick={() =>
-                      setTrainMode("manual")
-                    }
-                  >
-                    Manual
-                  </button>
-
-                </div>
-
-              </div>
-
-              {trainMode === "select" ? (
-
-                <TrainDropdown
-                  value={trainNumber}
-                  onChange={(value) => {
-
-                    setTrainNumber(value);
-
-                    const train =
-                      trains.find(
-                        (t) =>
-                          t.number === value
-                      );
-
-                    if (train) {
-
-                      setStation(
-                        train.stations[
-                        train.stations.length - 1
-                        ][0]
-                      );
-
-                    }
-
-                  }}
-                />
-
-              ) : (
-
-                <div className="manual-box">
-
-                  <TrainIcon />
-
-                  <input
-                    value={manualTrain}
-                    onChange={(e) =>
-                      setManualTrain(
-                        e.target.value
-                      )
-                    }
-                    placeholder="Enter train number"
-                  />
-
-                </div>
-
-              )}
-
-            </div>
-
-            {/* =================================================
-                STATION
-                ================================================= */}
-
-            <div className="input-section">
-
-              <div className="input-label-row">
-
-                <label>
-                  Station to Check
-                </label>
-
-                <div className="mode-toggle">
-
-                  <button
-                    className={
-                      stationMode === "select"
-                        ? "active"
-                        : ""
-                    }
-                    onClick={() =>
-                      setStationMode("select")
-                    }
-                  >
-                    Select
-                  </button>
-
-                  <button
-                    className={
-                      stationMode === "manual"
-                        ? "active"
-                        : ""
-                    }
-                    onClick={() =>
-                      setStationMode("manual")
-                    }
-                  >
-                    Manual
-                  </button>
-
-                </div>
-
-              </div>
-
-              {stationMode === "select" ? (
-
-                <StationDropdown
-                  stations={
-                    selectedTrain.stations
-                  }
-                  value={station}
-                  onChange={setStation}
-                />
-
-              ) : (
-
-                <div className="manual-box">
-
-                  <LocationIcon />
-
-                  <input
-                    value={manualStation}
-                    onChange={(e) =>
-                      setManualStation(
-                        e.target.value.toUpperCase()
-                      )
-                    }
-                    placeholder="Enter station code"
-                  />
-
-                </div>
-
-              )}
-
-              <p className="input-helper">
-                Choose a station on the selected train route
-              </p>
-
-            </div>
-
-            {/* =================================================
-                DATE
-                ================================================= */}
-
-            <div className="input-section date-section">
-
-              <div className="input-label-row">
-
-                <label>
-                  Journey Date
-                </label>
-
-                <div className="mode-toggle">
-
-                  <button
-                    className={
-                      dateMode === "calendar"
-                        ? "active"
-                        : ""
-                    }
-                    onClick={() => {
-
-                      setDateMode("calendar");
-                      setShowCalendar(true);
-
-                    }}
-                  >
-                    Calendar
-                  </button>
-
-                  <button
-                    className={
-                      dateMode === "manual"
-                        ? "active"
-                        : ""
-                    }
-                    onClick={() => {
-
-                      setDateMode("manual");
-                      setShowCalendar(false);
-
-                    }}
-                  >
-                    Manual
-                  </button>
-
-                </div>
-
-              </div>
-
-              {dateMode === "calendar" ? (
-
-                <div className="date-wrapper">
-
-                  <button
-                    className={`date-box ${showCalendar
-                      ? "open"
-                      : ""
-                      }`}
-                    onClick={() =>
-                      setShowCalendar(
-                        !showCalendar
-                      )
-                    }
-                  >
-
-                    <CalendarIcon />
-
-                    <span>
-                      {date}
-                    </span>
-
-                    <ChevronDown />
-
-                  </button>
-
-                  {showCalendar && (
-                    <>
-
-                      <div
-                        className="calendar-backdrop"
-                        onClick={() =>
-                          setShowCalendar(false)
-                        }
-                      />
-
-                      <CalendarPopup
-                        selectedDate={date}
-                        onSelect={(value) => {
-
-                          setDate(value);
-                          setShowCalendar(false);
-
-                        }}
-                      />
-
-                    </>
-                  )}
-
-                </div>
-
-              ) : (
-
-                <div className="manual-box">
-
-                  <CalendarIcon />
-
-                  <input
-                    value={date}
-                    onChange={(e) =>
-                      setDate(
-                        e.target.value
-                      )
-                    }
-                    placeholder="YYYY-MM-DD"
-                  />
-
-                </div>
-
-              )}
-
-            </div>
-
-          </div>
-
-          {/* =================================================
-              PREDICT BUTTON
-              ================================================= */}
-
-          <button
-            className="predict-button"
-            onClick={() => {
-              const finalTrain =
-                trainMode === "select"
-                  ? trainNumber
-                  : manualTrain.trim();
-
-              const finalStation =
-                stationMode === "select"
-                  ? station
-                  : manualStation.trim().toUpperCase();
-
-              const finalDate =
-                date.trim();
-
-              onPredict({
-                trainNumber: finalTrain,
-                station: finalStation,
-                date: finalDate,
-              });
-            }}
-            disabled={loading}
-          >
-
-
-            {loading
-              ? "Predicting..."
-              : "Predict Delay"}
-
-            {!loading && <ArrowRight />}
-
-          </button>
-
-        </section>
-
-      </main>
-
-    </>
-  );
-}
-
-/* =========================================================
-   RESULT PAGE
-   ========================================================= */
-
-function ResultPage({
-  trainNumber,
-  station,
-  date,
-  prediction,
-  onBack,
-}) {
-  const train =
-    trains.find(
-      (item) =>
-        item.number === String(trainNumber)
-    ) || trains[0];
-
-  const stationData =
-    train.stations.find(
-      (item) => item[0] === station
-    ) ||
-    train.stations[
-    train.stations.length - 1
-    ];
-
-  const predictedDelay =
-    prediction
-      ? Math.round(
-        prediction.predicted_delay_minutes
-      )
-      : 0;
-
-  const scheduledArrival =
-    prediction?.scheduled_arrival ||
-    "--:--";
-
-  const expectedArrival =
-    prediction?.expected_actual_arrival ||
-    "--:--";
-
-  const advisory =
-    prediction?.status_advisory ||
-    "Prediction available.";
-
-  /*
-   * The backend currently does not provide
-   * a real confidence percentage.
-   *
-   * Therefore the old hardcoded 98%
-   * is intentionally not displayed.
-   */
-
-  const delayFactor = Math.min(
-    100,
-    Math.max(
-      5,
-      Math.round(
-        (Math.abs(predictedDelay) / 300) * 100
-      )
-    )
-  );
-
-  const routeProgress = prediction
-    ? Math.min(
-      100,
-      Math.max(
-        0,
-        Math.round(
-          (
-            prediction.distance_from_source_km /
-            Math.max(
-              prediction.distance_from_source_km +
-              prediction.distance_to_destination_km,
-              1
-            )
-          ) * 100
-        )
-      )
-    )
-    : 0;
-
-  return (
-    <main className="result-page">
-
-      {/* =================================================
-          BACK
-          ================================================= */}
-
-      <button
-        className="back-button"
-        onClick={onBack}
-      >
-        <ArrowLeft />
-        New Prediction
-      </button>
-
-      {/* =================================================
-          RESULT HERO
-          ================================================= */}
-
-      <section className="result-hero">
-
-        <div className="result-hero-left">
-
-          <div className="result-pill">
-            PREDICTION RESULT
-          </div>
-
-          <h1>
-            {prediction?.train_name ||
-              train.name}
-          </h1>
-
-          <p className="result-route">
-
-            Train{" "}
-            {prediction?.train_number ||
-              train.number}
-
-            <span>•</span>
-
-            {prediction?.station_code ||
-              stationData[0]}
-
-            <span>•</span>
-
-            {prediction?.journey_date ||
-              date}
-
-          </p>
-
-          <div className="delay-result">
-
-            <span className="delay-result-label">
-              Predicted Delay
-            </span>
-
-            <div className="delay-result-number">
-
-              {predictedDelay}
-
-              <span>
-                min
-              </span>
-
-            </div>
-
-            <div className="delay-result-status">
-              {advisory}
-            </div>
-
-          </div>
-
-        </div>
-
-        {/* =================================================
-            MODEL STATUS
-            ================================================= */}
-
-        <div className="confidence-large">
-
-          <div className="confidence-icon-large">
-            <ShieldIcon />
-          </div>
-
-          <span>
-            Prediction Status
-          </span>
-
-          <strong>
-            Ready
-          </strong>
-
-          <div className="confidence-large-bar">
-
-            <div
-              style={{
-                width: "100%",
-              }}
-            />
-
-          </div>
-
-          <p>
-            Prediction generated by Synapse ML model
-          </p>
-
-        </div>
-
-      </section>
-
-      {/* =================================================
-          EXPECTED ARRIVAL
-          ================================================= */}
-
-      <section className="arrival-card">
-
-        <div className="arrival-heading">
-
-          <div>
-
-            <span>
-              EXPECTED ARRIVAL
-            </span>
-
-            <h2>
-              Arrival time prediction
-            </h2>
-
-          </div>
-
-          <div className="route-badge">
-            {prediction?.station_name ||
-              stationData[1]}
-          </div>
-
-        </div>
-
-        <div className="arrival-times">
-
-          {/* SCHEDULED */}
-
-          <div className="arrival-time">
-
-            <span>
-              Scheduled Arrival
-            </span>
-
-            <strong>
-              {scheduledArrival}
-            </strong>
-
-            <small>
-              Expected timetable
-            </small>
-
-          </div>
-
-          {/* LINE */}
-
-          <div className="arrival-line">
-
-            <div className="line-dot" />
-
-            <div className="line" />
-
-            <ArrowRight />
-
-            <div className="line" />
-
-            <div className="line-dot purple" />
-
-          </div>
-
-          {/* EXPECTED */}
-
-          <div className="arrival-time expected-time">
-
-            <span>
-              Expected Arrival
-            </span>
-
-            <strong>
-              {expectedArrival}
-            </strong>
-
-            <small>
-              Predicted actual time
-            </small>
-
-          </div>
-
-        </div>
-
-      </section>
-
-      {/* =================================================
-          DETAILS
-          ================================================= */}
-
-      <section className="details-grid">
-
-        {/* =================================================
-            REASONS
-            ================================================= */}
-
-        <div className="reasons-card result-reasons">
-
-          <div className="card-heading">
-
-            <div>
-
-              <span>
-                ANALYSIS
-              </span>
-
-              <h2>
-                Reasons for Prediction
-              </h2>
-
-            </div>
-
-            <div className="analysis-badge">
-              Model Factors
-            </div>
-
-          </div>
-
-          <Reason
-            title="Predicted Delay"
-            impact="Model output"
-            percentage={delayFactor}
-            type="orange"
-          />
-
-          <Reason
-            title="Route Position"
-            impact="Model input"
-            percentage={routeProgress}
-            type="purple"
-          />
-
-          <Reason
-            title="Journey Day"
-            impact="Model input"
-            percentage={
-              prediction ? 100 : 0
-            }
-            type="pink"
-          />
-
-          <Reason
-            title="Station Information"
-            impact="Model input"
-            percentage={
-              prediction ? 100 : 0
-            }
-            type="green"
-          />
-
-          <p
-            style={{
-              marginTop: "18px",
-              fontSize: "12px",
-              color: "#777",
-              lineHeight: "1.5",
-            }}
-          >
-            These indicators represent model inputs and
-            output information. They are not individual
-            feature-importance percentages.
-          </p>
-
-        </div>
-
-        {/* =================================================
-            JOURNEY DETAILS
-            ================================================= */}
-
-        <div className="journey-card">
-
-          <div className="card-heading">
-
-            <div>
-
-              <span>
-                JOURNEY
-              </span>
-
-              <h2>
-                Journey Details
-              </h2>
-
-            </div>
-
-          </div>
-
-          <div className="journey-row">
-
-            <span>
-              Train
-            </span>
-
-            <strong>
-              {prediction?.train_number ||
-                train.number}
-              {" — "}
-              {prediction?.train_name ||
-                train.name}
-            </strong>
-
-          </div>
-
-          <div className="journey-row">
-
-            <span>
-              Route
-            </span>
-
-            <strong>
-              {train.route}
-            </strong>
-
-          </div>
-
-          <div className="journey-row">
-
-            <span>
-              Station
-            </span>
-
-            <strong>
-              {prediction?.station_code ||
-                stationData[0]}
-              {" — "}
-              {prediction?.station_name ||
-                stationData[1]}
-            </strong>
-
-          </div>
-
-          <div className="journey-row">
-
-            <span>
-              Distance from Source
-            </span>
-
-            <strong>
-              {prediction
-                ? `${prediction.distance_from_source_km} km`
-                : "--"}
-            </strong>
-
-          </div>
-
-          <div className="journey-row">
-
-            <span>
-              Distance to Destination
-            </span>
-
-            <strong>
-              {prediction
-                ? `${prediction.distance_to_destination_km} km`
-                : "--"}
-            </strong>
-
-          </div>
-
-          <div className="journey-row">
-
-            <span>
-              Day
-            </span>
-
-            <strong>
-              {prediction?.day_of_week ||
-                "--"}
-            </strong>
-
-          </div>
-
-          <div className="journey-row">
-
-            <span>
-              Journey Date
-            </span>
-
-            <strong>
-              {prediction?.journey_date ||
-                date}
-            </strong>
-
-          </div>
-
-        </div>
-
-      </section>
-
-      {/* =================================================
-          INFORMATION
-          ================================================= */}
-
-      <section className="result-information">
-
-        <div className="information-icon">
-          <ShieldIcon />
-        </div>
-
-        <div>
-
-          <strong>
-            About this prediction
-          </strong>
-
-          <p>
-            Synapse uses the trained machine-learning
-            model together with train, station, timetable,
-            route and journey-date information to estimate
-            the expected delay at the selected station.
-          </p>
-
-        </div>
-
-      </section>
-
-    </main>
-  );
-}
-
-/* =========================================================
-   APP
-   ========================================================= */
 
 function App() {
+  const [page, setPage] = useState("predict");
+  const [trainNumber, setTrainNumber] = useState("12625");
+  const [station, setStation] = useState("NDLS");
+  const [date, setDate] = useState(
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Kolkata",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    }).format(new Date())
+  );
 
-  const [page, setPage] =
-    useState("predict");
+  const [prediction, setPrediction] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [theme, setTheme] = useState(() => readStore(KEYS.theme, "light"));
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [modal, setModal] = useState("");
+  const [favorites, setFavorites] = useState(() => readStore(KEYS.favorites, []));
+  const [recent, setRecent] = useState(() => readStore(KEYS.recent, []));
+  const [history, setHistory] = useState(() => readStore(KEYS.history, []));
+  const [prefs, setPrefs] = useState(() =>
+    readStore(KEYS.prefs, {
+      timeFormat: "24h",
+      alertsEnabled: false,
+      alertThreshold: 30
+    })
+  );
 
-  const [trainNumber, setTrainNumber] =
-    useState("12625");
+  const [helpQuery, setHelpQuery] = useState("");
+  const [rating, setRating] = useState(0);
+  const [feedback, setFeedback] = useState("");
+  const [ratingMessage, setRatingMessage] = useState("");
+  const [ratingSubmitting, setRatingSubmitting] = useState(false);
+  const [ratingSubmitted, setRatingSubmitted] = useState(false);
 
-  const [station, setStation] =
-    useState("NDLS");
+  const [actualDelay, setActualDelay] = useState("");
+  const [actualMessage, setActualMessage] = useState("");
+  const [actualSubmitting, setActualSubmitting] = useState(false);
+  const [actualSubmitted, setActualSubmitted] = useState(false);
 
-  const [date, setDate] =
-    useState("2026-07-25");
+  const [coachData, setCoachData] = useState(null);
+  const [coachLoading, setCoachLoading] = useState(false);
+  const [coachError, setCoachError] = useState("");
+  const [selectedCoach, setSelectedCoach] = useState(null);
+  const [analytics, setAnalytics] = useState(null);
 
-  const [prediction, setPrediction] =
-    useState(null);
+  const clock = useIstClock(prefs.timeFormat);
 
-  const [loading, setLoading] =
-    useState(false);
+  const selectedTrain =
+    trains.find(t => t.number === String(trainNumber)) || trains[0];
 
-  const [error, setError] =
-    useState("");
+  const selectedStation =
+    selectedTrain?.stations?.find(s => s[0] === station) ||
+    [station, `${station} Station`];
 
-  /* =======================================================
-     REAL BACKEND PREDICTION
-     ======================================================= */
-  const handlePredict = async ({
-    trainNumber: inputTrainNumber,
-    station: inputStation,
-    date: inputDate,
-  }) => {
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    writeStore(KEYS.theme, theme);
+  }, [theme]);
+
+  useEffect(() => writeStore(KEYS.favorites, favorites), [favorites]);
+  useEffect(() => writeStore(KEYS.recent, recent), [recent]);
+  useEffect(() => writeStore(KEYS.history, history), [history]);
+  useEffect(() => writeStore(KEYS.prefs, prefs), [prefs]);
+
+  useEffect(() => {
+    if (page !== "result" || !trainNumber) return;
+
+    let cancelled = false;
+
+    setCoachLoading(true);
+    setCoachError("");
+    setCoachData(null);
+    setSelectedCoach(null);
+
+    fetch(`${API_URL}/coach-composition/${encodeURIComponent(trainNumber)}`)
+      .then(async response => {
+        const body = await response.json();
+
+        if (!response.ok) {
+          throw new Error(
+            body.detail || "Could not load coach composition."
+          );
+        }
+
+        return body;
+      })
+      .then(body => {
+        if (!cancelled) setCoachData(body);
+      })
+      .catch(error => {
+        if (!cancelled) {
+          setCoachError(
+            error.message || "Coach composition is unavailable."
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setCoachLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [page, trainNumber]);
+
+  const toggleFavorite = number => {
+    setFavorites(old =>
+      old.includes(number)
+        ? old.filter(x => x !== number)
+        : [...old, number]
+    );
+  };
+
+  const recordRecent = item => {
+    setRecent(old =>
+      [
+        item,
+        ...old.filter(
+          x =>
+            !(
+              x.train_number === item.train_number &&
+              x.station_code === item.station_code &&
+              x.journey_date === item.journey_date
+            )
+        )
+      ].slice(0, 12)
+    );
+  };
+
+  async function handlePredict(payload) {
+    const t = String(payload.trainNumber || "").trim();
+    const st = String(payload.station || "").trim().toUpperCase();
+    const d = String(payload.date || "").trim();
+
+    if (
+      !/^\d{4}-\d{2}-\d{2}$/.test(d) ||
+      Number.isNaN(Date.parse(`${d}T00:00:00`))
+    ) {
+      setError("Enter a valid journey date in YYYY-MM-DD format.");
+      return;
+    }
+
+    if (!t || !st) {
+      setError("Please enter both train number and station code.");
+      return;
+    }
+
     setLoading(true);
     setError("");
-
-    const finalTrainNumber =
-      String(inputTrainNumber).trim();
-
-    const finalStation =
-      String(inputStation).trim().toUpperCase();
-
-    const finalDate =
-      String(inputDate).trim();
-
-    if (!finalTrainNumber) {
-      setError("Please enter a train number.");
-      setLoading(false);
-      return;
-    }
-
-    if (!finalStation) {
-      setError("Please enter a station code.");
-      setLoading(false);
-      return;
-    }
-
-    if (!finalDate) {
-      setError("Please enter a journey date.");
-      setLoading(false);
-      return;
-    }
+    setActualMessage("");
 
     try {
-      const response = await fetch(
-        `${API_URL}/predict`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            train_number: Number(finalTrainNumber),
-            station_code: finalStation,
-            journey_date: finalDate,
-          }),
-        }
-      );
+      const response = await fetch(`${API_URL}/predict`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          train_number: t,
+          station_code: st,
+          journey_date: d
+        })
+      });
 
-      const data = await response.json();
+      const body = await response.json();
 
       if (!response.ok) {
-        throw new Error(
-          data.detail ||
-          "Prediction request failed."
-        );
+        throw new Error(body.detail || "Prediction request failed.");
       }
 
-      setPrediction(data);
+      setPrediction(body);
+      setTrainNumber(t);
+      setStation(st);
+      setDate(d);
 
-      setTrainNumber(
-        String(data.train_number)
-      );
+      const item = {
+        train_number: t,
+        train_name:
+          trains.find(x => x.number === t)?.name || `Train ${t}`,
+        station_code: st,
+        journey_date: d,
+        predicted_delay_minutes: body.predicted_delay_minutes,
+        status_advisory: body.status_advisory,
+        predicted_at: new Date().toISOString(),
+        factors: body.factors || []
+      };
 
-      setStation(
-        data.station_code
-      );
+      setHistory(old => [item, ...old].slice(0, 100));
 
-      setDate(
-        data.journey_date
-      );
+      recordRecent({
+        train_number: t,
+        station_code: st,
+        journey_date: d,
+        searched_at: new Date().toISOString()
+      });
 
+      setActualDelay("");
+      setActualMessage("");
+      setActualSubmitted(false);
       setPage("result");
 
-    } catch (err) {
-      console.error(
-        "Prediction error:",
-        err
-      );
-
-      setError(
-        err.message ||
-        "Could not connect to the prediction server."
-      );
-
+      if (
+        prefs.alertsEnabled &&
+        Number(body.predicted_delay_minutes) >=
+        Number(prefs.alertThreshold) &&
+        "Notification" in window &&
+        Notification.permission === "granted"
+      ) {
+        new Notification("Synapse delay alert", {
+          body: `${item.train_name}: predicted delay ${Math.round(
+            body.predicted_delay_minutes
+          )} minutes at ${st}.`
+        });
+      }
+    } catch (e) {
+      setError(e.message || "Could not connect to the Synapse API.");
     } finally {
       setLoading(false);
     }
-  };
+  }
+
+  async function submitRating(e) {
+    e.preventDefault();
+
+    if (ratingSubmitting || ratingSubmitted) return;
+
+    setRatingMessage("");
+
+    if (!rating) {
+      setRatingMessage("Please select a star rating.");
+      return;
+    }
+
+    setRatingSubmitting(true);
+
+    try {
+      const res = await fetch(`${API_URL}/feedback`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rating, comment: feedback })
+      });
+
+      const body = await res.json();
+
+      if (!res.ok || body.saved !== true) {
+        throw new Error(
+          body.detail || "Feedback could not be confirmed as saved."
+        );
+      }
+
+      setRatingSubmitted(true);
+    } catch (e) {
+      setRatingMessage(
+        `${e.message} Your feedback has not been confirmed as saved.`
+      );
+    } finally {
+      setRatingSubmitting(false);
+    }
+  }
+
+  async function submitActual(e) {
+    e.preventDefault();
+
+    if (actualSubmitting || actualSubmitted) return;
+
+    setActualMessage("");
+
+    const value = Number(actualDelay);
+
+    if (
+      actualDelay === "" ||
+      !Number.isFinite(value) ||
+      value < 0
+    ) {
+      setActualMessage(
+        "Enter a valid actual delay (0 or more minutes)."
+      );
+      return;
+    }
+
+    setActualSubmitting(true);
+
+    try {
+      const res = await fetch(`${API_URL}/actual-delay`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          train_number: String(trainNumber),
+          station_code: station,
+          journey_date: date,
+          predicted_delay_minutes: Number(
+            prediction.predicted_delay_minutes
+          ),
+          actual_delay_minutes: value
+        })
+      });
+
+      const body = await res.json();
+
+      if (!res.ok || body.saved !== true) {
+        throw new Error(
+          body.detail ||
+          "Could not confirm that the actual delay was saved."
+        );
+      }
+
+      setActualSubmitted(true);
+    } catch (e) {
+      setActualMessage(
+        e.message || "Actual delay submission failed."
+      );
+    } finally {
+      setActualSubmitting(false);
+    }
+  }
+
+  async function loadAnalytics() {
+    setPage("analytics");
+
+    try {
+      const res = await fetch(`${API_URL}/analytics`);
+      const body = await res.json();
+
+      if (!res.ok) {
+        throw new Error(body.detail || "Analytics unavailable");
+      }
+
+      setAnalytics(body);
+    } catch {
+      setAnalytics({
+        count: 0,
+        message:
+          "Analytics endpoint unavailable. Start the updated FastAPI backend."
+      });
+    }
+  }
+
+  async function sharePrediction() {
+    const text = `Synapse prediction
+Train: ${trainNumber} - ${selectedTrain?.name || ""}
+Station: ${station}
+Journey date: ${date}
+Predicted delay: ${prediction?.predicted_delay_minutes} minutes
+Advisory: ${prediction?.status_advisory}
+Prediction is an estimate, not an official railway update.`;
+
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: "Synapse train delay prediction",
+          text
+        });
+      } else {
+        await navigator.clipboard.writeText(text);
+        alert("Prediction copied to clipboard.");
+      }
+    } catch (e) {
+      if (e.name !== "AbortError") {
+        try {
+          await navigator.clipboard.writeText(text);
+          alert("Prediction copied to clipboard.");
+        } catch {
+          alert(text);
+        }
+      }
+    }
+  }
+
+  function downloadReport() {
+    window.print();
+  }
+
+  async function enableAlerts() {
+    if (prefs.alertsEnabled) {
+      setPrefs(p => ({ ...p, alertsEnabled: false }));
+      return;
+    }
+
+    if (!("Notification" in window)) {
+      alert("Browser notifications are not supported.");
+      return;
+    }
+
+    const permission = await Notification.requestPermission();
+
+    setPrefs(p => ({
+      ...p,
+      alertsEnabled: permission === "granted"
+    }));
+  }
+
+  function openMenu(name) {
+    setMenuOpen(false);
+
+    if (name === "about") {
+      setModal("about");
+    } else if (
+      name === "settings" ||
+      name === "help" ||
+      name === "rate"
+    ) {
+      if (name === "rate") {
+        setRatingSubmitted(false);
+        setRatingMessage("");
+        setRating(0);
+        setFeedback("");
+      }
+
+      setModal(name);
+    }
+  }
+
+  const helpItems = [
+    [
+      "How to make a prediction",
+      "Choose one of the 20 listed trains or enter a train number manually. Select a station code and journey date, then press Predict Delay."
+    ],
+    [
+      "Understanding the result",
+      "The predicted delay is the output of the configured ML pipeline. The advisory groups the result into on-time, moderate or severe categories."
+    ],
+    [
+      "Factors",
+      "The current backend returns date-based seasonal indicators. They are not live weather observations or SHAP explanations."
+    ],
+    [
+      "Coach composition",
+      "Coach details are shown only when verified composition data has been added. The supplied project does not include verified coach data."
+    ],
+    [
+      "Backend not reachable",
+      "Start the FastAPI server and check the VITE_API_URL setting. The default is http://127.0.0.1:8000."
+    ],
+    [
+      "Prediction failed",
+      "Check that all four ML artifact files exist at the configured backend paths and that the train, station and date inputs are valid."
+    ],
+    [
+      "Disclaimer",
+      "Synapse predictions are estimates generated by a machine-learning model. They are not official Indian Railways announcements or guaranteed train-running information."
+    ]
+  ];
+
+  const filteredHelp = helpItems.filter(([a, b]) =>
+    `${a} ${b}`.toLowerCase().includes(helpQuery.toLowerCase())
+  );
 
   return (
-    <div className="app">
-
-      {/* ===================================================
-          NAVBAR
-          =================================================== */}
-
-      <header className="navbar">
-
-        <div className="navbar-inner">
-
-          <button
-            className="logo-button"
-            onClick={() =>
-              setPage("predict")
-            }
-          >
-
-            <SynapseLogo />
-
-          </button>
-
-          <nav className="nav-links">
-
-            <button
-              className={
-                page === "predict"
-                  ? "active"
-                  : ""
-              }
-              onClick={() =>
-                setPage("predict")
-              }
-            >
-              Predict
-            </button>
-
-            <button>
-              Train Status
-            </button>
-
-            <button>
-              About
-            </button>
-
-            <div className="avatar">
-              A
-            </div>
-
-          </nav>
-
-        </div>
-
-      </header>
-
-      {/* ===================================================
-          PAGE
-          =================================================== */}
-
-      {page === "predict" ? (
-
-        <>
-
-          <PredictionPage
-
-            trainNumber={
-              trainNumber
-            }
-
-            setTrainNumber={
-              setTrainNumber
-            }
-
-            station={
-              station
-            }
-
-            setStation={
-              setStation
-            }
-
-            date={
-              date
-            }
-
-            setDate={
-              setDate
-            }
-
-            onPredict={
-              handlePredict
-            }
-
-            loading={
-              loading
-            }
-
+    <div className="app-shell">
+      <header className="topbar">
+        <div
+          className="brand"
+          onClick={() => setPage("predict")}
+          role="button"
+          tabIndex="0"
+        >
+          <img
+            className="brand-logo"
+            src={LOGO_URL}
+            alt="Synapse logo"
+            onError={e => {
+              console.error(
+                "Synapse logo could not be loaded:",
+                LOGO_URL
+              );
+              e.currentTarget.style.display = "none";
+            }}
           />
 
-          {/* =================================================
-              ERROR MESSAGE
-              ================================================= */}
+          <div>
+            <strong>Synapse</strong>
+            <small>AI Train Delay Prediction</small>
+          </div>
+        </div>
 
-          {error && (
-
-            <div
-              style={{
-                maxWidth: "1100px",
-                margin: "0 auto 30px",
-                padding: "14px 18px",
-                borderRadius: "10px",
-                background: "#fff1f1",
-                border: "1px solid #ffd0d0",
-                color: "#c62828",
-                fontSize: "14px",
-              }}
-            >
-
-              <strong>
-                Prediction Error:
-              </strong>
-
-              <br />
-
-              {error}
-
+        <div className="topbar-right">
+          <div className="rail-clock">
+            <span className="clock-dot" />
+            <div>
+              <small>RAILWAY TIME · IST</small>
+              <strong>{clock}</strong>
             </div>
-
-          )}
-
-        </>
-
-      ) : (
-
-        <ResultPage
-
-          trainNumber={
-            prediction?.train_number ||
-            trainNumber
-          }
-
-          station={
-            prediction?.station_code ||
-            station
-          }
-
-          date={
-            prediction?.journey_date ||
-            date
-          }
-
-          prediction={
-            prediction
-          }
-
-          onBack={() =>
-            setPage("predict")
-          }
-
-        />
-
-      )}
-
-      {/* ===================================================
-          LOADING OVERLAY
-          =================================================== */}
-
-      {loading && (
-
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background:
-              "rgba(255,255,255,0.65)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 9999,
-          }}
-        >
-
-          <div
-            style={{
-              background: "white",
-              padding: "25px 35px",
-              borderRadius: "14px",
-              boxShadow:
-                "0 10px 40px rgba(0,0,0,0.12)",
-              textAlign: "center",
-            }}
-          >
-
-            <strong
-              style={{
-                display: "block",
-                fontSize: "18px",
-                marginBottom: "8px",
-              }}
-            >
-              Predicting delay...
-            </strong>
-
-            <span
-              style={{
-                color: "#777",
-                fontSize: "13px",
-              }}
-            >
-              Synapse is processing the journey data.
-            </span>
-
           </div>
 
-        </div>
+          <button
+            className="theme-quick"
+            onClick={() =>
+              setTheme(t => (t === "light" ? "dark" : "light"))
+            }
+            aria-label="Toggle theme"
+          >
+            {theme === "light" ? "☾" : "☀"}
+          </button>
 
+          <div className="menu-wrap">
+            <button
+              className="icon-button"
+              onClick={() => setMenuOpen(v => !v)}
+              aria-label="Open menu"
+            >
+              ⋮
+            </button>
+
+            {menuOpen && (
+              <>
+                <button
+                  className="menu-dismiss"
+                  onClick={() => setMenuOpen(false)}
+                  aria-label="Close menu"
+                />
+
+                <div className="dropdown-panel">
+                  <button onClick={() => openMenu("settings")}>
+                    ⚙ Settings
+                  </button>
+                  <button onClick={() => openMenu("help")}>
+                    ? Help / User Manual
+                  </button>
+                  <button onClick={() => openMenu("rate")}>
+                    ★ Rate Synapse
+                  </button>
+                  <button onClick={() => openMenu("about")}>
+                    ⓘ About Synapse
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </header>
+
+      <nav className="main-nav">
+        <button
+          className={
+            page === "predict" || page === "result" ? "active" : ""
+          }
+          onClick={() => setPage("predict")}
+        >
+          Predict
+        </button>
+
+        <button
+          className={page === "history" ? "active" : ""}
+          onClick={() => setPage("history")}
+        >
+          History
+        </button>
+
+        <button
+          className={page === "analytics" ? "active" : ""}
+          onClick={loadAnalytics}
+        >
+          Analytics
+        </button>
+
+        <button
+          className={page === "routes" ? "active" : ""}
+          onClick={() => setPage("routes")}
+        >
+          Train Routes
+        </button>
+      </nav>
+
+      {page === "predict" && (
+        <>
+          <section className="hero">
+            <div>
+              <span className="eyebrow">
+                AI-POWERED TRAIN DELAY PREDICTION
+              </span>
+              <h1>
+                Know your train's delay
+                <br />
+                <em>before it happens.</em>
+              </h1>
+              <p>
+                Select your train, station and journey date to generate
+                an ML-based delay estimate.
+              </p>
+            </div>
+          </section>
+
+          <main className="content">
+            <section className="panel prediction-panel">
+              <div className="panel-title">
+                <div>
+                  <span className="eyebrow">NEW PREDICTION</span>
+                  <h2>Plan your journey</h2>
+                  <p>Enter the details below.</p>
+                </div>
+                <span className="status-chip">● ML API</span>
+              </div>
+
+              <div className="form-grid">
+                <label>
+                  Train
+                  <select
+                    value={trainNumber}
+                    onChange={e => {
+                      setTrainNumber(e.target.value);
+                      const t = trains.find(
+                        x => x.number === e.target.value
+                      );
+                      if (t) {
+                        setStation(
+                          t.stations[t.stations.length - 1][0]
+                        );
+                      }
+                    }}
+                  >
+                    {trains.map(t => (
+                      <option key={t.number} value={t.number}>
+                        {t.number} — {t.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label>
+                  Station
+                  <select
+                    value={station}
+                    onChange={e => setStation(e.target.value)}
+                  >
+                    {(selectedTrain?.stations || []).map(
+                      ([code, name]) => (
+                        <option key={code} value={code}>
+                          {code} — {name}
+                        </option>
+                      )
+                    )}
+                  </select>
+                </label>
+
+                <label>
+                  Journey date
+                  <input
+                    type="date"
+                    value={date}
+                    onChange={e => setDate(e.target.value)}
+                  />
+                </label>
+              </div>
+
+              <div className="form-actions">
+                <button
+                  className="primary-button"
+                  disabled={loading}
+                  onClick={() =>
+                    handlePredict({ trainNumber, station, date })
+                  }
+                >
+                  {loading ? "Predicting…" : "Predict delay →"}
+                </button>
+
+                <button
+                  className={`secondary-button ${favorites.includes(trainNumber) ? "saved" : ""
+                    }`}
+                  onClick={() => toggleFavorite(trainNumber)}
+                >
+                  {favorites.includes(trainNumber)
+                    ? "★ Saved"
+                    : "☆ Favourite train"}
+                </button>
+              </div>
+
+              {favorites.length > 0 && (
+                <div className="inline-list">
+                  <strong>Favourite trains</strong>
+
+                  {favorites.map(n => (
+                    <button
+                      key={n}
+                      onClick={() => {
+                        setTrainNumber(n);
+                        const t = trains.find(x => x.number === n);
+                        if (t) {
+                          setStation(
+                            t.stations[t.stations.length - 1][0]
+                          );
+                        }
+                      }}
+                    >
+                      {n} ·{" "}
+                      {trains.find(t => t.number === n)?.name ||
+                        "Train"}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            {error && <div className="error-banner">{error}</div>}
+
+            {recent.length > 0 && (
+              <section className="panel">
+                <div className="section-head">
+                  <div>
+                    <span className="eyebrow">QUICK ACCESS</span>
+                    <h2>Recent searches</h2>
+                  </div>
+                  <button
+                    className="text-button"
+                    onClick={() => setRecent([])}
+                  >
+                    Clear
+                  </button>
+                </div>
+
+                <div className="recent-list">
+                  {recent.slice(0, 5).map((r, i) => (
+                    <button
+                      key={i}
+                      onClick={() => {
+                        setTrainNumber(r.train_number);
+                        setStation(r.station_code);
+                        setDate(r.journey_date);
+                      }}
+                    >
+                      <strong>
+                        {r.train_number} ·{" "}
+                        {trains.find(
+                          t => t.number === r.train_number
+                        )?.name || "Train"}
+                      </strong>
+                      <span>
+                        {r.station_code} · {r.journey_date}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </section>
+            )}
+          </main>
+        </>
       )}
 
-      {/* ===================================================
-          FOOTER
-          =================================================== */}
+      {page === "result" && prediction && (
+        <main className="content result-content">
+          <button
+            className="text-button back-link"
+            onClick={() => setPage("predict")}
+          >
+            ← New prediction
+          </button>
+
+          <section className="result-banner">
+            <div>
+              <span className="eyebrow">PREDICTION RESULT</span>
+              <h1>{selectedTrain?.name || `Train ${trainNumber}`}</h1>
+              <p>
+                {trainNumber} · {station} · {date}
+              </p>
+            </div>
+
+            <div className="delay-value">
+              <strong>
+                {Math.round(prediction.predicted_delay_minutes)}
+              </strong>
+              <span>minutes predicted delay</span>
+            </div>
+
+            <div className="advisory">
+              {prediction.status_advisory}
+            </div>
+          </section>
+
+          <div className="two-col">
+            <section className="panel">
+              <span className="eyebrow">MODEL OUTPUT</span>
+              <h2>Date-based context indicators</h2>
+              <p className="muted">
+                These indicators are returned by the current backend.
+                They are not live weather readings or individual SHAP
+                contributions.
+              </p>
+
+              {(prediction.factors || []).map((f, i) => (
+                <div className="factor-row" key={i}>
+                  <div>
+                    <strong>{f.title}</strong>
+                    <span>{f.impact}</span>
+                  </div>
+                  <span className="factor-tag">Context</span>
+                </div>
+              ))}
+            </section>
+
+            <section className="panel">
+              <span className="eyebrow">JOURNEY DETAILS</span>
+              <h2>Selected journey</h2>
+
+              <div className="detail-row">
+                <span>Train</span>
+                <strong>
+                  {trainNumber} — {selectedTrain?.name}
+                </strong>
+              </div>
+
+              <div className="detail-row">
+                <span>Route</span>
+                <strong>{selectedTrain?.route}</strong>
+              </div>
+
+              <div className="detail-row">
+                <span>Station</span>
+                <strong>
+                  {selectedStation[0]} — {selectedStation[1]}
+                </strong>
+              </div>
+
+              <div className="detail-row">
+                <span>Journey date</span>
+                <strong>{date}</strong>
+              </div>
+            </section>
+          </div>
+
+          <div className="two-col">
+            <section className="panel coach-panel">
+              <span className="eyebrow">TRAIN INFORMATION</span>
+              <h2>Coach Composition</h2>
+              <p className="muted">
+                Coach order from the locomotive to the last coach.
+                Composition is displayed only when verified data is
+                available.
+              </p>
+
+              {coachLoading ? (
+                <div className="empty-state">
+                  Loading coach composition…
+                </div>
+              ) : coachError ? (
+                <div className="empty-state">{coachError}</div>
+              ) : !coachData ||
+                !Array.isArray(coachData.coaches) ||
+                coachData.coaches.length === 0 ? (
+                <div className="empty-state">
+                  Coach composition currently unavailable for this
+                  train.
+                </div>
+              ) : (
+                <>
+                  <div className="coach-meta">
+                    <span>
+                      {coachData.coach_type ||
+                        "Coach type not verified"}
+                    </span>
+                    <span>
+                      Updated: {coachData.last_updated || "Not available"}
+                    </span>
+                  </div>
+
+                  <div className="coach-sequence">
+                    <div className="coach-engine">LOCO</div>
+
+                    {coachData.coaches.map((coach, index) => (
+                      <button
+                        type="button"
+                        key={`${coach.position}-${coach.coach_number}-${index}`}
+                        className={`coach-card ${selectedCoach === index ? "selected" : ""
+                          }`}
+                        onClick={() => setSelectedCoach(index)}
+                      >
+                        <small>{coach.position}</small>
+                        <strong>
+                          {coach.coach_number || coach.designation}
+                        </strong>
+                        <span>
+                          {coach.category || coach.designation}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+
+                  {selectedCoach !== null &&
+                    coachData.coaches[selectedCoach] && (
+                      <div className="coach-detail">
+                        <strong>
+                          {coachData.coaches[selectedCoach].coach_number ||
+                            coachData.coaches[selectedCoach].designation}
+                        </strong>
+                        <span>
+                          Position{" "}
+                          {coachData.coaches[selectedCoach].position} ·{" "}
+                          {coachData.coaches[selectedCoach].category ||
+                            "Category not specified"}
+                        </span>
+                      </div>
+                    )}
+
+                  <p className="muted small">
+                    Source: {coachData.source || "Not supplied"}
+                  </p>
+                </>
+              )}
+            </section>
+
+            <section className="panel">
+              <span className="eyebrow">SHARE YOUR RESULT</span>
+              <h2>Prediction report</h2>
+              <p className="muted">
+                Share this estimate or use your browser's print dialog
+                to save a PDF copy.
+              </p>
+
+              <div className="button-row">
+                <button
+                  className="secondary-button"
+                  onClick={sharePrediction}
+                >
+                  Share prediction
+                </button>
+                <button
+                  className="primary-button"
+                  onClick={downloadReport}
+                >
+                  Print / Save PDF
+                </button>
+              </div>
+            </section>
+          </div>
+
+          <section className="panel">
+            <span className="eyebrow">MODEL EVALUATION</span>
+            <h2>Record actual delay after your journey</h2>
+            <p className="muted">
+              This helps compare a prediction with an actual observation.
+              Submitted values are stored in the local backend database
+              and are not used to retrain the model.
+            </p>
+
+            {actualSubmitted ? (
+              <div className="submission-success">
+                <span className="success-check">✓</span>
+                <h3>Thank You!</h3>
+                <p>
+                  Thank you for contributing the actual train delay.
+                  Your submission has been recorded successfully and
+                  will help us evaluate prediction performance.
+                </p>
+              </div>
+            ) : (
+              <form className="actual-form" onSubmit={submitActual}>
+                <label>
+                  Actual arrival delay (minutes)
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.1"
+                    value={actualDelay}
+                    onChange={e => setActualDelay(e.target.value)}
+                    placeholder="e.g. 18"
+                    required
+                  />
+                </label>
+
+                <button
+                  className="primary-button"
+                  type="submit"
+                  disabled={actualSubmitting}
+                >
+                  {actualSubmitting
+                    ? "Submitting…"
+                    : "Submit actual delay"}
+                </button>
+              </form>
+            )}
+
+            {actualMessage && (
+              <p className="form-message error-text">
+                {actualMessage}
+              </p>
+            )}
+          </section>
+        </main>
+      )}
+
+      {page === "history" && (
+        <main className="content">
+          <section className="panel">
+            <div className="section-head">
+              <div>
+                <span className="eyebrow">YOUR DEVICE</span>
+                <h2>Prediction history</h2>
+              </div>
+
+              <button
+                className="text-button"
+                onClick={() => {
+                  if (
+                    confirm(
+                      "Clear prediction history on this device?"
+                    )
+                  ) {
+                    setHistory([]);
+                  }
+                }}
+              >
+                Clear history
+              </button>
+            </div>
+
+            {history.length === 0 ? (
+              <div className="empty-state">
+                No predictions saved on this device yet.
+              </div>
+            ) : (
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Train</th>
+                      <th>Station</th>
+                      <th>Date</th>
+                      <th>Predicted delay</th>
+                      <th>Advisory</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {history.map((h, i) => (
+                      <tr key={`${h.predicted_at}-${i}`}>
+                        <td>
+                          {h.train_number} · {h.train_name}
+                        </td>
+                        <td>{h.station_code}</td>
+                        <td>{h.journey_date}</td>
+                        <td>{h.predicted_delay_minutes} min</td>
+                        <td>{h.status_advisory}</td>
+                        <td>
+                          <button
+                            className="text-button"
+                            onClick={() => {
+                              setTrainNumber(h.train_number);
+                              setStation(h.station_code);
+                              setDate(h.journey_date);
+                              setPrediction(h);
+                              setPage("result");
+                            }}
+                          >
+                            Open
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        </main>
+      )}
+
+      {page === "analytics" && (
+        <main className="content">
+          <section className="panel">
+            <span className="eyebrow">
+              EVALUATION FROM SUBMITTED ACTUALS
+            </span>
+            <h2>Model performance</h2>
+
+            {!analytics ? (
+              <p>Loading analytics…</p>
+            ) : analytics.count > 0 ? (
+              <>
+                <div className="metric-grid">
+                  <div className="metric">
+                    <span>Observations</span>
+                    <strong>{analytics.count}</strong>
+                  </div>
+
+                  <div className="metric">
+                    <span>MAE</span>
+                    <strong>{analytics.mae_minutes} min</strong>
+                  </div>
+
+                  <div className="metric">
+                    <span>RMSE</span>
+                    <strong>{analytics.rmse_minutes} min</strong>
+                  </div>
+
+                  <div className="metric">
+                    <span>R²</span>
+                    <strong>
+                      {analytics.r2 === null ? "N/A" : analytics.r2}
+                    </strong>
+                  </div>
+                </div>
+
+                <p className="muted">
+                  Metrics are calculated from {analytics.count}{" "}
+                  user-submitted actual-delay observations. This is not
+                  a substitute for a held-out test-set evaluation.
+                </p>
+              </>
+            ) : (
+              <div className="empty-state">
+                {analytics.message ||
+                  "No actual-delay observations have been submitted yet. MAE and RMSE will appear after data is collected."}
+              </div>
+            )}
+          </section>
+
+          <section className="panel">
+            <span className="eyebrow">RESEARCH FEATURES</span>
+            <h2>Advanced ML analysis</h2>
+            <p className="muted">
+              SHAP explanations, a what-if simulator and
+              station-by-station predicted delay trends are not enabled
+              because the supplied inference code does not expose
+              validated per-request model inputs or route-level
+              predictions. They should be connected only after the
+              model's training feature schema is verified.
+            </p>
+          </section>
+        </main>
+      )}
+
+      {page === "routes" && (
+        <main className="content">
+          <section className="panel">
+            <span className="eyebrow">TRAIN ROUTE</span>
+            <h2>{selectedTrain?.name}</h2>
+            <p className="muted">
+              Route stops below come from the train list supplied with
+              your project. No station coordinates were provided, so
+              an accurate map cannot yet be drawn.
+            </p>
+
+            <div className="route-list">
+              {(selectedTrain?.stations || []).map(
+                ([code, name], i) => (
+                  <div
+                    className={`route-stop ${code === station ? "current" : ""
+                      }`}
+                    key={`${code}-${i}`}
+                  >
+                    <span className="route-dot" />
+                    <div>
+                      <strong>{name}</strong>
+                      <small>
+                        {code}
+                        {code === station ? " · Selected station" : ""}
+                      </small>
+                    </div>
+                  </div>
+                )
+              )}
+            </div>
+          </section>
+        </main>
+      )}
+
+      {modal === "settings" && (
+        <Modal title="Settings" onClose={() => setModal("")}>
+          <div className="settings-list">
+            <label>
+              Appearance
+              <select
+                value={theme}
+                onChange={e => setTheme(e.target.value)}
+              >
+                <option value="light">Light mode</option>
+                <option value="dark">Dark mode</option>
+              </select>
+            </label>
+
+            <label>
+              Clock timezone
+              <input value="Asia/Kolkata (IST)" readOnly />
+            </label>
+
+            <label>
+              Time format
+              <select
+                value={prefs.timeFormat}
+                onChange={e =>
+                  setPrefs(p => ({
+                    ...p,
+                    timeFormat: e.target.value
+                  }))
+                }
+              >
+                <option value="24h">24-hour</option>
+                <option value="12h">
+                  12-hour (clock remains IST)
+                </option>
+              </select>
+            </label>
+
+            <label>
+              Delay alert threshold
+              <select
+                value={prefs.alertThreshold}
+                onChange={e =>
+                  setPrefs(p => ({
+                    ...p,
+                    alertThreshold: Number(e.target.value)
+                  }))
+                }
+              >
+                <option value="15">15 minutes</option>
+                <option value="30">30 minutes</option>
+                <option value="60">60 minutes</option>
+              </select>
+            </label>
+
+            <button className="secondary-button" onClick={enableAlerts}>
+              {prefs.alertsEnabled
+                ? "Disable browser alerts"
+                : "Enable browser alerts"}
+            </button>
+
+            <button
+              className="text-button danger-text"
+              onClick={() => {
+                setTheme("light");
+                setPrefs({
+                  timeFormat: "24h",
+                  alertsEnabled: false,
+                  alertThreshold: 30
+                });
+              }}
+            >
+              Reset preferences
+            </button>
+
+            <p className="muted small">
+              Alerts are checked only when you run a prediction in this
+              browser. They do not monitor trains continuously.
+            </p>
+          </div>
+        </Modal>
+      )}
+
+      {modal === "help" && (
+        <Modal
+          title="Help / User Manual"
+          onClose={() => setModal("")}
+          wide
+        >
+          <input
+            className="search-input"
+            placeholder="Search help topics…"
+            value={helpQuery}
+            onChange={e => setHelpQuery(e.target.value)}
+          />
+
+          <div className="help-list">
+            {filteredHelp.map(([title, body]) => (
+              <article key={title}>
+                <h3>{title}</h3>
+                <p>{body}</p>
+              </article>
+            ))}
+          </div>
+        </Modal>
+      )}
+
+      {modal === "rate" && (
+        <Modal title="Rate Synapse" onClose={() => setModal("")}>
+          {ratingSubmitted ? (
+            <div className="submission-success">
+              <span className="success-check">✓</span>
+              <h3>Thank You!</h3>
+              <p>
+                Thank you for sharing your feedback. Your response has
+                been submitted successfully.
+              </p>
+            </div>
+          ) : (
+            <form onSubmit={submitRating} className="rating-form">
+              <p>How would you rate your experience?</p>
+
+              <div className="stars">
+                {[1, 2, 3, 4, 5].map(n => (
+                  <button
+                    type="button"
+                    key={n}
+                    className={n <= rating ? "selected" : ""}
+                    onClick={() => setRating(n)}
+                    aria-label={`${n} stars`}
+                  >
+                    ★
+                  </button>
+                ))}
+              </div>
+
+              <label>
+                Optional feedback
+                <textarea
+                  rows="4"
+                  value={feedback}
+                  onChange={e => setFeedback(e.target.value)}
+                  maxLength={1000}
+                  placeholder="Tell us what could be improved…"
+                />
+              </label>
+
+              <button
+                className="primary-button"
+                type="submit"
+                disabled={ratingSubmitting}
+              >
+                {ratingSubmitting ? "Submitting…" : "Submit rating"}
+              </button>
+
+              {ratingMessage && (
+                <p className="form-message error-text">
+                  {ratingMessage}
+                </p>
+              )}
+            </form>
+          )}
+        </Modal>
+      )}
+
+      {modal === "about" && (
+        <Modal title="About Synapse" onClose={() => setModal("")}>
+          <p>
+            <strong>Synapse</strong> is an AI-powered train delay
+            prediction system developed by students of the{" "}
+            <strong>College of Engineering Poonjar</strong>. Powered by
+            an XGBoost + LSTM inference pipeline, the system incorporates
+            a wide range of dynamic features and influencing factors to
+            deliver more accurate and reliable train delay predictions.
+            By leveraging data-driven insights and advanced machine
+            learning techniques, Synapse aims to improve delay
+            forecasting and provide users with better-informed travel
+            expectations.
+          </p>
+
+          <p className="muted">
+            <em>
+              Version 1.1 · Predictions are estimates and are not
+              official railway information.
+            </em>
+          </p>
+        </Modal>
+      )}
+
+      {loading && (
+        <div className="loading-overlay">
+          <div className="loading-card">
+            <div className="spinner" />
+            <strong>Generating prediction…</strong>
+            <span>Waiting for the Synapse ML API.</span>
+          </div>
+        </div>
+      )}
 
       <footer className="footer">
-
-        <SynapseLogo small />
-
-        <div className="footer-right">
-          © 2026 Synapse | AI-Powered Train Delay Prediction System
-        </div>
-
+        <span>Synapse · AI Train Delay Prediction</span>
+        <span>Estimates only · Not an official railway service</span>
       </footer>
-
     </div>
   );
 }

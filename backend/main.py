@@ -1,344 +1,310 @@
+"""Synapse FastAPI backend.
+The existing XGBoost + LSTM prediction pipeline is intentionally preserved.
+Additional feedback/actual-delay records are stored in a local SQLite database.
 """
-Main FastAPI application for AI Train Delay Prediction.
-
-This module sets up:
-1. One-time model loading at startup using the lifespan context manager.
-2. CORS configuration for the React frontend.
-3. Diagnostic routes (GET / and GET /health).
-4. Prediction route (POST /predict) which uses future_delay_model.pkl and
-   the exact feature preprocessing logic from predict.py.
-"""
-
-from contextlib import asynccontextmanager
-from datetime import datetime, timedelta
-from pathlib import Path
-from typing import Union, Dict, Any, List
-
-from fastapi import FastAPI, HTTPException, status
-from fastapi.middleware.cors import CORSMiddleware
+from tensorflow.keras.models import load_model
 from pydantic import BaseModel, Field
-import joblib
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, HTTPException
 import pandas as pd
+import numpy as np
+import joblib
+from pathlib import Path
+from datetime import datetime, timezone
+from contextlib import asynccontextmanager
+import json
+import sqlite3
+import os
+os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
 
 
-# ---------------------------------------------------------------------------
-# 1. Model File Path Resolution
-# ---------------------------------------------------------------------------
-# Dynamically locate future_delay_model.pkl located in the project root directory
-# (one level above this backend folder). This avoids hardcoding paths and works
-# consistently regardless of the working directory where the server is launched.
 BASE_DIR = Path(__file__).resolve().parent.parent
-MODEL_PATH = BASE_DIR / "future_delay_model.pkl"
+XGB_PATH = BASE_DIR / "final_production_xgb.pkl"
+LSTM_PATH = BASE_DIR / "final_production_lstm.keras"
+SCALER_PATH = BASE_DIR / "final_minmax_scaler.pkl"
+ENCODERS_PATH = BASE_DIR / "final_label_encoders.pkl"
+DB_PATH = BASE_DIR / "synapse_feedback.db"
+COACH_DATA_PATH = Path(__file__).resolve().parent / "coach_compositions.json"
 
 
-# ---------------------------------------------------------------------------
-# 2. Helper Functions (Reused from predict.py)
-# ---------------------------------------------------------------------------
-def add_minutes_to_time(time_str: str, delay_mins: float) -> str:
-    """
-    Calculates actual clock time by adding predicted delay (in minutes)
-    to a scheduled time string ('HH:MM').
-    Returns 'N/A' if time is missing or cannot be parsed.
-    """
-    if pd.isna(time_str) or str(time_str).strip() in ['—', '-', '', 'nan', 'None']:
-        return "N/A"
-    try:
-        t = datetime.strptime(str(time_str).strip(), "%H:%M")
-        actual_t = t + timedelta(minutes=float(delay_mins))
-        return actual_t.strftime("%H:%M")
-    except Exception:
-        return "N/A"
+def get_db():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
 
 
-# ---------------------------------------------------------------------------
-# 3. Pydantic Schemas for Input Validation & Output Serialization
-# ---------------------------------------------------------------------------
+def init_db():
+    with get_db() as conn:
+        conn.execute("""CREATE TABLE IF NOT EXISTS ratings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            rating INTEGER NOT NULL CHECK(rating BETWEEN 1 AND 5),
+            comment TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL
+        )""")
+        conn.execute("""CREATE TABLE IF NOT EXISTS actual_delays (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            train_number TEXT NOT NULL,
+            station_code TEXT NOT NULL,
+            journey_date TEXT NOT NULL,
+            predicted_delay REAL NOT NULL,
+            actual_delay REAL NOT NULL,
+            absolute_error REAL NOT NULL,
+            created_at TEXT NOT NULL
+        )""")
+
+
 class PredictionRequest(BaseModel):
-    train_number: Union[int, str] = Field(
-        ...,
-        description="Train number or identifier (e.g. 12002 or '12002')",
-        examples=[12002]
-    )
-    station_code: str = Field(
-        ...,
-        description="IRCTC Station code (e.g. 'BPL', 'NDLS', 'AGC')",
-        examples=["BPL"]
-    )
-    journey_date: str = Field(
-        ...,
-        description="Date of journey in YYYY-MM-DD format (e.g. '2026-09-22')",
-        examples=["2026-09-22"]
-    )
+    train_number: str = Field(min_length=1, max_length=20)
+    station_code: str = Field(min_length=1, max_length=20)
+    journey_date: str
 
 
 class PredictionResponse(BaseModel):
-    train_number: str = Field(..., description="Train number")
-    train_name: str = Field(..., description="Full train name")
-    station_code: str = Field(..., description="Station code")
-    station_name: str = Field(..., description="Full station name")
-    journey_date: str = Field(..., description="Journey date (YYYY-MM-DD)")
-    day_of_week: str = Field(..., description="Day name (e.g. Monday)")
-    distance_from_source_km: float = Field(..., description="Distance in km from train source station")
-    scheduled_arrival: str = Field(..., description="Scheduled arrival time (HH:MM)")
-    scheduled_departure: str = Field(..., description="Scheduled departure time (HH:MM)")
-    predicted_delay_minutes: float = Field(..., description="Predicted arrival delay in minutes")
-    expected_actual_arrival: str = Field(..., description="Estimated actual arrival time (HH:MM)")
-    expected_actual_departure: str = Field(..., description="Estimated actual departure time (HH:MM)")
-    status_advisory: str = Field(..., description="Advisory status category")
+    predicted_delay_minutes: float
+    status_advisory: str
+    factors: list
 
 
-# ---------------------------------------------------------------------------
-# 4. Lifespan Context Manager (Load ML Model Once on Startup)
-# ---------------------------------------------------------------------------
+class RatingRequest(BaseModel):
+    rating: int = Field(ge=1, le=5)
+    comment: str = Field(default="", max_length=1000)
+
+
+class ActualDelayRequest(BaseModel):
+    train_number: str = Field(min_length=1, max_length=20)
+    station_code: str = Field(min_length=1, max_length=20)
+    journey_date: str
+    predicted_delay_minutes: float = Field(ge=0)
+    actual_delay_minutes: float = Field(ge=0)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """
-    Lifespan handler:
-    Loads future_delay_model.pkl once into memory when FastAPI starts up,
-    preventing costly disk reads on every request.
-    """
-    if not MODEL_PATH.exists():
+    init_db()
+    required = [XGB_PATH, LSTM_PATH, SCALER_PATH, ENCODERS_PATH]
+    missing = [str(p) for p in required if not p.exists()]
+    if missing:
         raise RuntimeError(
-            f"Trained model artifact '{MODEL_PATH.name}' was not found at {MODEL_PATH}. "
-            "Please ensure future_delay_model.pkl is placed in the project root."
-        )
-
-    print(f"Loading ML model artifacts from: {MODEL_PATH}")
-    artifacts: Dict[str, Any] = joblib.load(MODEL_PATH)
-
-    # Store artifacts in app.state for access inside endpoint handlers
-    app.state.model = artifacts["model"]
-    app.state.feature_cols = artifacts["feature_cols"]
-    app.state.timetable_ref = artifacts["timetable_ref"]
-    app.state.train_categories = artifacts["train_categories"]
-    app.state.station_categories = artifacts["station_categories"]
-
-    print("[OK] Model and timetable lookup data successfully loaded into memory.")
+            "Missing ML artifact file(s): " + ", ".join(missing))
+    app.state.xgb_model = joblib.load(XGB_PATH)
+    app.state.lstm_extractor = load_model(LSTM_PATH)
+    app.state.scaler = joblib.load(SCALER_PATH)
+    app.state.encoders = joblib.load(ENCODERS_PATH)
     yield
-    print("Shutting down FastAPI application.")
 
 
-# ---------------------------------------------------------------------------
-# 5. FastAPI App & CORS Setup
-# ---------------------------------------------------------------------------
-app = FastAPI(
-    title="AI Train Delay Prediction API",
-    description="FastAPI service for predicting Indian Railways train delays using a pre-trained ML model.",
-    version="1.0.0",
-    lifespan=lifespan
-)
-
-# CORS configuration for the React frontend (running on Vite or CRA)
-origins = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "http://localhost:3000",
-    "http://127.0.0.1:3000"
-]
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-
-# ---------------------------------------------------------------------------
-# 6. Basic Diagnostic Routes
-# ---------------------------------------------------------------------------
-@app.get("/")
-def read_root():
-    """Root endpoint to confirm that the backend server is running."""
-    return {
-        "status": "online",
-        "message": "AI Train Delay Prediction Backend is running successfully!",
-        "docs_url": "/docs"
-    }
+app = FastAPI(title="Synapse AI Train Delay API",
+              version="1.1.0", lifespan=lifespan)
+app.add_middleware(CORSMiddleware, allow_origins=[
+                   "*"], allow_methods=["*"], allow_headers=["*"])
 
 
 @app.get("/health")
-def health_check():
-    """Health check endpoint to verify service and model readiness."""
-    model_loaded = hasattr(app.state, "model") and app.state.model is not None
+def health():
+    return {"status": "ok", "service": "Synapse API"}
+
+
+@app.get("/coach-composition/{train_number}")
+def get_coach_composition(train_number: str):
+    """Return verified coach sequence for a train, or an honest unavailable response.
+
+    Populate coach_compositions.json only with verified, train-specific data.
+    This endpoint deliberately does not infer or fabricate coach sequences.
+    """
+    if not train_number.isdigit() or len(train_number) > 10:
+        raise HTTPException(status_code=400, detail="Invalid train number.")
+
+    if not COACH_DATA_PATH.exists():
+        return {
+            "train_number": train_number,
+            "available": False,
+            "coach_type": None,
+            "last_updated": None,
+            "source": None,
+            "coaches": [],
+            "message": "Coach composition currently unavailable for this train."
+        }
+
+    try:
+        with COACH_DATA_PATH.open("r", encoding="utf-8") as file:
+            records = json.load(file)
+    except (OSError, json.JSONDecodeError):
+        raise HTTPException(
+            status_code=500, detail="Coach composition data file is invalid.")
+
+    record = records.get(train_number) if isinstance(records, dict) else None
+    if not isinstance(record, dict) or not isinstance(record.get("coaches"), list) or not record["coaches"]:
+        return {
+            "train_number": train_number,
+            "available": False,
+            "coach_type": None,
+            "last_updated": None,
+            "source": None,
+            "coaches": [],
+            "message": "Coach composition currently unavailable for this train."
+        }
+
+    # Validate sequence fields before returning data to the frontend.
+    coaches = []
+    for item in record["coaches"]:
+        if not isinstance(item, dict) or not isinstance(item.get("position"), int):
+            continue
+        if not (item.get("coach_number") or item.get("designation")):
+            continue
+        coaches.append({
+            "position": item["position"],
+            "coach_number": str(item.get("coach_number") or item.get("designation")),
+            "designation": str(item.get("designation") or ""),
+            "category": str(item.get("category") or "")
+        })
+    coaches.sort(key=lambda coach: coach["position"])
+
+    if not coaches:
+        return {
+            "train_number": train_number, "available": False, "coach_type": None,
+            "last_updated": None, "source": None, "coaches": [],
+            "message": "Coach composition currently unavailable for this train."
+        }
+
     return {
-        "status": "healthy",
-        "service": "train-delay-prediction-backend",
-        "model_loaded": model_loaded
+        "train_number": train_number,
+        "available": True,
+        "coach_type": record.get("coach_type"),
+        "last_updated": record.get("last_updated"),
+        "source": record.get("source"),
+        "coaches": coaches
     }
 
 
-@app.get("/test-data")
-def get_test_data():
-    """
-    Temporary testing endpoint:
-    Returns 10 valid train number and station code combinations from the loaded timetable.
-    """
-    if not hasattr(app.state, "timetable_ref") or app.state.timetable_ref is None:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Timetable data is not initialized."
-        )
-
-    timetable: pd.DataFrame = app.state.timetable_ref
-    required_cols = ["train_number", "station_code", "train_name", "station_name"]
-    sample_data = timetable[required_cols].head(10).to_dict(orient="records")
-    return sample_data
-
-
-# ---------------------------------------------------------------------------
-# 7. Prediction Endpoint (Reusing predict.py Preprocessing)
-# ---------------------------------------------------------------------------
 @app.post("/predict", response_model=PredictionResponse)
 def predict_delay(request: PredictionRequest):
-    """
-    Predict train delay and calculate estimated actual arrival & departure times.
-    Reuses the exact feature encoding, timetable lookup, and inference pipeline
-    from predict.py.
-    """
-    if not hasattr(app.state, "model") or app.state.model is None:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Machine learning model is not initialized."
-        )
-
-    # 1. Parse and validate the journey date
     try:
         dt = datetime.strptime(request.journey_date.strip(), "%Y-%m-%d")
+        month = dt.month
     except ValueError:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid date format for '{request.journey_date}'. Expected format: YYYY-MM-DD (e.g. 2026-09-22)."
-        )
+            status_code=400, detail="Invalid date format. Use YYYY-MM-DD.")
 
-    req_train_str = str(request.train_number).strip()
-    req_station_code = request.station_code.strip().upper()
+    # Existing seasonal/context rules retained. These are NOT live weather readings.
+    factors = []
+    is_monsoon = 1 if month in [6, 7, 8, 9] else 0
+    rainfall = 45.5 if is_monsoon else 0.0
+    if is_monsoon:
+        factors.append({"title": "Monsoon Weather",
+                       "impact": "Seasonal rainfall assumption", "type": "orange"})
 
-    timetable: pd.DataFrame = app.state.timetable_ref
-    train_cats: List[Any] = app.state.train_categories
-    station_cats: List[Any] = app.state.station_categories
-    feature_cols: List[str] = app.state.feature_cols
-    model = app.state.model
+    fog = 2 if month in [12, 1, 2] else 0
+    if fog > 0:
+        factors.append(
+            {"title": "Winter Fog", "impact": "Seasonal fog-risk assumption", "type": "orange"})
 
-    # 2. Look up the train in the timetable reference catalog
-    train_matches = timetable[
-        timetable['train_number'].astype(str).str.strip() == req_train_str
-    ]
+    is_festival = 1 if month in [10, 11] else 0
+    if is_festival:
+        factors.append({"title": "Festival Season",
+                       "impact": "Calendar-based seasonal indicator", "type": "pink"})
 
-    if train_matches.empty:
-        available_trains = list(timetable['train_number'].astype(str).dropna().unique())[:10]
+    factors.append({"title": "Network Momentum",
+                   "impact": "Fixed historical-sequence placeholder", "type": "purple"})
+
+    # Preserve the original three-row feature construction and model input ordering.
+    live_data = pd.DataFrame({
+        'scheduled_arrival_hour': [14, 15, 16],
+        'previous_station_delay_min': [10.0, 15.0, 22.0],
+        'target_arrival_delay_min': [15.0, 22.0, 0.0],
+        'train_type': ['Premium'] * 3,
+        'is_monsoon_season': [is_monsoon] * 3,
+        'rainfall_mm': [rainfall] * 3,
+        'fog_risk_score': [fog] * 3,
+        'psr_count': [3] * 3,
+        'is_hdn_route': [1] * 3,
+        'station_zone': ['NR'] * 3,
+        'loco_age_years': [12] * 3
+    })
+
+    encoders = app.state.encoders
+    scaler = app.state.scaler
+    for col in ['train_type', 'station_zone']:
+        if col in encoders:
+            try:
+                live_data[col] = encoders[col].transform(live_data[col])
+            except ValueError:
+                # Preserve original fallback behavior.
+                live_data[col] = encoders[col].transform(['NR'] * 3)
+
+    live_data['source_station_category'] = 0
+    scaled_df = pd.DataFrame(columns=scaler.feature_names_in_)
+    for col in scaled_df.columns:
+        scaled_df[col] = live_data.get(col, 0)
+    scaled_data = scaler.transform(scaled_df)
+
+    X_seq_live = np.array([scaled_data[:, :3]])
+    X_static_live = np.array([scaled_data[0, 3:]])
+    lstm_features = app.state.lstm_extractor.predict(X_seq_live, verbose=0)
+    X_hybrid_live = np.hstack((X_static_live, lstm_features))
+    scaled_prediction = app.state.xgb_model.predict(X_hybrid_live)[0]
+    target_min = scaler.data_min_[2]
+    target_range = scaler.data_range_[2]
+    predicted_minutes = (scaled_prediction * target_range) + target_min
+    final_delay = max(0.0, round(float(predicted_minutes), 1))
+
+    if final_delay > 60:
+        advisory = "SEVERE DELAY (> 1 hr). System cascade detected."
+    elif final_delay > 20:
+        advisory = "MODERATE DELAY. Typical for current conditions."
+    else:
+        advisory = "ON TIME / MINIMAL DELAY (< 20 mins)."
+    return PredictionResponse(predicted_delay_minutes=final_delay, status_advisory=advisory, factors=factors)
+
+
+@app.post("/feedback")
+def submit_feedback(request: RatingRequest):
+    created = datetime.now(timezone.utc).isoformat()
+    with get_db() as conn:
+        cursor = conn.execute("INSERT INTO ratings(rating, comment, created_at) VALUES (?, ?, ?)",
+                              (request.rating, request.comment.strip(), created))
+        feedback_id = cursor.lastrowid
+    return {"saved": True, "feedback_id": feedback_id, "message": "Thank you for your feedback."}
+
+
+@app.post("/actual-delay")
+def submit_actual_delay(request: ActualDelayRequest):
+    try:
+        datetime.strptime(request.journey_date, "%Y-%m-%d")
+    except ValueError:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=(
-                f"Train number '{request.train_number}' was not found in the timetable. "
-                f"Available trains include: {', '.join(available_trains)}"
-            )
-        )
+            status_code=400, detail="journey_date must use YYYY-MM-DD.")
+    error = round(abs(request.predicted_delay_minutes -
+                  request.actual_delay_minutes), 2)
+    created = datetime.now(timezone.utc).isoformat()
+    with get_db() as conn:
+        cursor = conn.execute("""INSERT INTO actual_delays
+            (train_number, station_code, journey_date, predicted_delay, actual_delay, absolute_error, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                              (request.train_number, request.station_code, request.journey_date,
+                               request.predicted_delay_minutes, request.actual_delay_minutes, error, created))
+        record_id = cursor.lastrowid
+    return {"saved": True, "record_id": record_id, "absolute_error_minutes": error}
 
-    # 3. Look up the station along the train's route
-    station_matches = train_matches[
-        train_matches['station_code'].astype(str).str.strip().str.upper() == req_station_code
-    ]
 
-    if station_matches.empty:
-        available_stations = list(train_matches['station_code'].astype(str).dropna().unique())
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=(
-                f"Station '{req_station_code}' was not found on the route of Train {request.train_number}. "
-                f"Valid stations for this train: {', '.join(available_stations)}"
-            )
-        )
-
-    sel_station = station_matches.iloc[0]
-    sel_train_name = str(sel_station.get('train_name', 'Unknown Train'))
-    sel_station_name = str(sel_station.get('station_name', req_station_code))
-
-    # 4. Resolve categorical codes (same logic as predict.py lines 78-81)
-    train_code = 0
-    for idx, cat in enumerate(train_cats):
-        if str(cat).strip() == req_train_str:
-            train_code = idx
-            break
-
-    station_code_idx = 0
-    for idx, cat in enumerate(station_cats):
-        if str(cat).strip().upper() == req_station_code:
-            station_code_idx = idx
-            break
-
-    # 5. Extract calendar and date features (same as predict.py lines 91-95)
-    month_num = dt.month
-    day_of_week_num = dt.weekday()
-    day_of_year = dt.timetuple().tm_yday
-    quarter = (month_num - 1) // 3 + 1
-    is_weekend_flag = 1 if day_of_week_num in [5, 6] else 0
-
-    # 6. Build the input feature record (exact match to predict.py lines 83-99)
-    record = {
-        'train_num_cat': train_code,
-        'station_code_cat': station_code_idx,
-        'distance_from_source_km': float(sel_station.get('distance_from_source_km', 0.0)),
-        'distance_from_previous_km': float(sel_station.get('distance_from_previous_km', 0.0)),
-        'distance_to_destination_km': float(sel_station.get('distance_to_destination_km', 0.0)),
-        'route_completion_ratio': float(sel_station.get('route_completion_ratio', 0.0)),
-        'sched_hour': float(sel_station.get('sched_hour', 12.0)),
-        'month_num': month_num,
-        'day_of_week_num': day_of_week_num,
-        'day_of_year': day_of_year,
-        'quarter': quarter,
-        'is_weekend_flag': is_weekend_flag,
-        'is_junction': int(sel_station.get('is_junction', 0)),
-        'is_major_junction': int(sel_station.get('is_major_junction', 0)),
-        'is_crossing_bottleneck': int(sel_station.get('is_crossing_bottleneck', 0))
+@app.get("/analytics")
+def get_analytics():
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT predicted_delay, actual_delay, absolute_error FROM actual_delays").fetchall()
+    if not rows:
+        return {"count": 0, "message": "No actual-delay observations have been submitted yet."}
+    predicted = np.array([r["predicted_delay"] for r in rows], dtype=float)
+    actual = np.array([r["actual_delay"] for r in rows], dtype=float)
+    errors = predicted - actual
+    return {
+        "count": int(len(rows)),
+        "mae_minutes": round(float(np.mean(np.abs(errors))), 2),
+        "rmse_minutes": round(float(np.sqrt(np.mean(errors ** 2))), 2),
+        "r2": (round(float(1 - (np.sum(errors ** 2) / np.sum((actual - np.mean(actual)) ** 2))), 4) if len(actual) > 1 and np.sum((actual - np.mean(actual)) ** 2) > 0 else None),
+        "note": "Calculated from user-submitted actual-delay observations; not a held-out test-set score."
     }
 
-    # 7. Construct feature DataFrame and generate prediction
-    try:
-        input_df = pd.DataFrame([record])[feature_cols]
-        raw_pred = float(model.predict(input_df)[0])
-        predicted_delay = max(0.0, round(raw_pred, 1))
-    except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Model inference failed: {str(exc)}"
-        )
 
-    # 8. Compute expected actual arrival and departure
-    sched_arr = str(sel_station.get('scheduled_arrival', 'N/A'))
-    sched_dep = str(sel_station.get('scheduled_departure', 'N/A'))
-    actual_arr = add_minutes_to_time(sched_arr, predicted_delay)
-    actual_dep = add_minutes_to_time(sched_dep, predicted_delay)
-
-    # 9. Determine status advisory (exact match to predict.py lines 128-133)
-    if predicted_delay > 60:
-        status_advisory = "SEVERE DELAY (> 1 hr). Plan buffer time."
-    elif predicted_delay > 20:
-        status_advisory = "MODERATE DELAY. Typical for this section."
-    else:
-        status_advisory = "ON TIME / MINIMAL DELAY (< 20 mins)."
-
-    return PredictionResponse(
-        train_number=req_train_str,
-        train_name=sel_train_name,
-        station_code=req_station_code,
-        station_name=sel_station_name,
-        journey_date=request.journey_date.strip(),
-        day_of_week=dt.strftime("%A"),
-        distance_from_source_km=float(sel_station.get('distance_from_source_km', 0.0)),
-        scheduled_arrival=sched_arr,
-        scheduled_departure=sched_dep,
-        predicted_delay_minutes=predicted_delay,
-        expected_actual_arrival=actual_arr,
-        expected_actual_departure=actual_dep,
-        status_advisory=status_advisory
-    )
-
-
-# ---------------------------------------------------------------------------
-# 8. Direct Execution Convenience
-# ---------------------------------------------------------------------------
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
