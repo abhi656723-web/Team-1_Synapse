@@ -588,8 +588,7 @@ const trains = [
       ["HSR", "Hisar Jn"],
       ["STD", "Sirsa"],
       ["BTI", "Bathinda Jn"]
-    ]
-  }
+    ]  }
 ];
 
 function useIstClock(timeFormat = "24h") {
@@ -608,7 +607,6 @@ function useIstClock(timeFormat = "24h") {
     hour12: timeFormat === "12h"
   }).format(now);
 }
-
 function Modal({ title, onClose, children, wide = false }) {
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
@@ -623,8 +621,7 @@ function Modal({ title, onClose, children, wide = false }) {
           </button>
         </header>
         {children}
-      </section>
-    </div>
+      </section>    </div>
   );
 }
 
@@ -642,6 +639,8 @@ function App() {
   );
 
   const [prediction, setPrediction] = useState(null);
+  const [liveStatus, setLiveStatus] = useState(null);
+  const [liveLoading, setLiveLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [theme, setTheme] = useState(() => readStore(KEYS.theme, "light"));
@@ -802,6 +801,23 @@ function App() {
       setPrediction(body);
       setTrainNumber(t);
       setStation(st);
+
+      // Concurrently query real-time train running status
+      setLiveLoading(true);
+      try {
+        const liveRes = await fetch(`${API_URL}/train/${encodeURIComponent(t)}/live`);
+        if (liveRes.ok) {
+          const liveData = await liveRes.json();
+          setLiveStatus(liveData);
+        } else {
+          setLiveStatus(null);
+        }
+      } catch (liveErr) {
+        console.warn("Real-time live status unavailable:", liveErr);
+        setLiveStatus(null);
+      } finally {
+        setLiveLoading(false);
+      }
       setDate(d);
 
       const item = {
@@ -1395,6 +1411,66 @@ Prediction is an estimate, not an official railway update.`;
               {prediction.status_advisory}
             </div>
           </section>
+
+          {/* ---------------------------------------------
+              REAL-TIME TRAIN RUNNING STATUS
+              --------------------------------------------- */}
+          {liveStatus && (
+            <section className="live-train-card">
+              <div className="live-card-header">
+                <div className="live-pulse-badge">
+                  <span className="live-pulse-dot"></span>
+                  LIVE RUNNING STATUS
+                </div>
+                <span className="live-source-tag">
+                  {liveStatus.source === "live_api" ? "Live Signal / GPS Feed" : "Live Timetable Tracking"}
+                  {liveStatus.cached ? " (Cached)" : ""}
+                </span>
+              </div>
+
+              <div className="live-card-body">
+                <div className="live-location-col">
+                  <div className="live-subheading">CURRENT / LAST REPORTED STATION</div>
+                  <div className="live-station-headline">
+                    {liveStatus.current_station_name} <span>[{liveStatus.current_station_code}]</span>
+                  </div>
+                  <div className="live-status-desc">{liveStatus.status_message}</div>
+                </div>
+
+                <div className="live-delay-badge-col">
+                  <div className="live-delay-pill">
+                    <span className="live-delay-number">
+                      {liveStatus.delay_minutes > 0 ? `+${liveStatus.delay_minutes}` : "0"}
+                    </span>
+                    <span className="live-delay-unit">
+                      {liveStatus.delay_minutes > 0 ? "min late" : "on time"}
+                    </span>
+                  </div>
+                  <div className="live-updated-time">Updated: {liveStatus.last_updated}</div>
+                </div>
+              </div>
+
+              {liveStatus.upcoming_stations && liveStatus.upcoming_stations.length > 0 && (
+                <div className="live-upcoming-container">
+                  <div className="live-subheading">UPCOMING STOPS ALONG ROUTE</div>
+                  <div className="live-stops-grid">
+                    {liveStatus.upcoming_stations.slice(0, 4).map((st, idx) => (
+                      <div key={st.station_code || idx} className="live-stop-card">
+                        <div className="live-stop-header">
+                          <span className="live-stop-code">{st.station_code}</span>
+                          <span className="live-stop-name">{st.station_name}</span>
+                        </div>
+                        <div className="live-stop-times">
+                          <span>Sched: <strong>{st.scheduled_arrival}</strong></span>
+                          <span>Live ETA: <strong className="live-eta-highlight">{st.expected_arrival}</strong></span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </section>
+          )}
 
           <div className="two-col">
             <section className="panel">

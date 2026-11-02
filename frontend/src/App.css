@@ -1185,3 +1185,236 @@ th {
     -webkit-print-color-adjust: exact;
   }
 }
+
+/* ============================================================
+   REAL-TIME LIVE TRAIN STATUS COMPONENT (THEMED)
+   ============================================================ */
+
+.live-train-card {
+  margin: 24px 0;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 24px;
+  box-shadow: var(--shadow);
+  position: relative;
+  overflow: hidden;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.live-train-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 4px;
+  height: 100%;
+  background: #10b981;
+}
+
+.live-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.live-pulse-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(16, 185, 129, 0.12);
+  color: #10b981;
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.6px;
+}
+
+.live-pulse-dot {
+  width: 8px;
+  height: 8px;
+  background-color: #10b981;
+  border-radius: 50%;
+  box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+  animation: live-pulse-anim 1.8s infinite;
+}
+
+@keyframes live-pulse-anim {
+  0% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+  }
+  70% {
+    transform: scale(1);
+    box-shadow: 0 0 0 8px rgba(16, 185, 129, 0);
+  }
+  100% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+  }
+}
+
+.live-source-tag {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 500;
+  background: var(--surface2);
+  border: 1px solid var(--line);
+  padding: 4px 10px;
+  border-radius: 6px;
+}
+
+.live-card-body {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 22px;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.live-location-col {
+  flex: 1;
+  min-width: 250px;
+}
+
+.live-subheading {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+.live-station-headline {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+
+.live-station-headline span {
+  font-size: 18px;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.live-status-desc {
+  font-size: 14px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.live-delay-badge-col {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.live-delay-pill {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  padding: 8px 18px;
+  border-radius: 12px;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.live-delay-number {
+  font-size: 26px;
+  font-weight: 800;
+  color: #ef4444;
+}
+
+.live-delay-unit {
+  font-size: 12px;
+  font-weight: 600;
+  color: #ef4444;
+  text-transform: uppercase;
+}
+
+.live-updated-time {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 6px;
+}
+
+.live-upcoming-container {
+  border-top: 1px solid var(--line);
+  padding-top: 18px;
+}
+
+.live-stops-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.live-stop-card {
+  background: var(--surface2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+.live-stop-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.live-stop-code {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+  background: var(--line);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.live-stop-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 130px;
+}
+
+.live-stop-times {
+  font-size: 11px;
+  color: var(--muted);
+  display: flex;
+  justify-content: space-between;
+}
+
+.live-stop-times strong {
+  color: var(--text);
+}
+
+.live-eta-highlight {
+  color: var(--accent) !important;
+  font-weight: 700;
+}
+
+@media (max-width: 768px) {
+  .live-card-body {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .live-delay-badge-col {
+    align-items: flex-start;
+  }
+  .live-stops-grid {
+    grid-template-columns: 1fr;
+  }
+}
