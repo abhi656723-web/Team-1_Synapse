@@ -20,6 +20,8 @@ from pydantic import BaseModel, Field
 import joblib
 import pandas as pd
 
+from services.realtime_service import RealTimeTrainService
+
 
 # ---------------------------------------------------------------------------
 # 1. Model File Path Resolution
@@ -87,6 +89,33 @@ class PredictionResponse(BaseModel):
     status_advisory: str = Field(..., description="Advisory status category")
 
 
+class UpcomingStation(BaseModel):
+    station_code: str = Field(..., description="IRCTC station code")
+    station_name: str = Field(..., description="Full station name")
+    distance_from_source_km: float = Field(..., description="Distance in km from source station")
+    scheduled_arrival: str = Field(..., description="Scheduled arrival time (HH:MM)")
+    expected_arrival: str = Field(..., description="Estimated actual arrival time (HH:MM)")
+
+
+class LiveTrainStatusResponse(BaseModel):
+    train_number: str = Field(..., description="Train number")
+    train_name: str = Field(..., description="Full train name")
+    is_running: bool = Field(..., description="Whether train is actively running today")
+    current_station_code: str = Field(..., description="Current or last reported station code")
+    current_station_name: str = Field(..., description="Current or last reported station name")
+    delay_minutes: float = Field(..., description="Current delay in minutes")
+    status_message: str = Field(..., description="Human-readable live status message")
+    last_updated: str = Field(..., description="Time of last update")
+    scheduled_arrival: str = Field(..., description="Scheduled arrival time at current station")
+    expected_arrival: str = Field(..., description="Estimated actual arrival time at current station")
+    scheduled_departure: str = Field(..., description="Scheduled departure time at current station")
+    expected_departure: str = Field(..., description="Estimated actual departure time at current station")
+    upcoming_stations: List[UpcomingStation] = Field(default=[], description="List of upcoming stations along route")
+    source: str = Field(..., description="Source of status: 'live_api' or 'simulated_timetable'")
+    cached: bool = Field(default=False, description="Whether returned from in-memory cache")
+
+
+
 # ---------------------------------------------------------------------------
 # 4. Lifespan Context Manager (Load ML Model Once on Startup)
 # ---------------------------------------------------------------------------
@@ -103,7 +132,7 @@ async def lifespan(app: FastAPI):
             "Please ensure future_delay_model.pkl is placed in the project root."
         )
 
-    print(f"Loading ML model artifacts from: {MODEL_PATH}")
+    print(f"Loading ML model artifacts from: {MODEL_PATH}", flush=True)
     artifacts: Dict[str, Any] = joblib.load(MODEL_PATH)
 
     # Store artifacts in app.state for access inside endpoint handlers
@@ -112,10 +141,11 @@ async def lifespan(app: FastAPI):
     app.state.timetable_ref = artifacts["timetable_ref"]
     app.state.train_categories = artifacts["train_categories"]
     app.state.station_categories = artifacts["station_categories"]
+    app.state.realtime_service = RealTimeTrainService()
 
-    print("[OK] Model and timetable lookup data successfully loaded into memory.")
+    print("[OK] Model, timetable lookup, and real-time service initialized.", flush=True)
     yield
-    print("Shutting down FastAPI application.")
+    print("Shutting down FastAPI application.", flush=True)
 
 
 # ---------------------------------------------------------------------------
@@ -337,7 +367,58 @@ def predict_delay(request: PredictionRequest):
 
 
 # ---------------------------------------------------------------------------
-# 8. Direct Execution Convenience
+# 8. Real-Time Train Running Status Endpoint
+# ---------------------------------------------------------------------------
+@app.get("/train/{train_number}/live", response_model=LiveTrainStatusResponse)
+async def get_live_train_status(train_number: str):
+    """
+    Retrieve real-time running information for a selected train.
+    Provides current station, live delay, expected arrival/departure,
+    and upcoming stops.
+    """
+    clean_num = train_number.strip()
+    if not clean_num.isdigit():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid train number '{train_number}'. Must contain only digits."
+        )
+
+    timetable: pd.DataFrame = getattr(app.state, "timetable_ref", None)
+    if timetable is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Timetable data is not initialized."
+        )
+
+    # Validate that train exists in our catalogue
+    train_matches = timetable[
+        timetable['train_number'].astype(str).str.strip() == clean_num
+    ]
+    if train_matches.empty:
+        available_trains = list(timetable['train_number'].astype(str).dropna().unique())
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Train number '{clean_num}' not found in timetable. Available: {', '.join(available_trains)}"
+        )
+
+    service: RealTimeTrainService = getattr(app.state, "realtime_service", None)
+    if not service:
+        service = RealTimeTrainService()
+
+    try:
+        live_info = await service.get_live_train_status(clean_num, timetable)
+        return LiveTrainStatusResponse(**live_info)
+    except KeyError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch live train status: {str(exc)}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# 9. Direct Execution Convenience
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
     import uvicorn

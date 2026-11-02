@@ -267,6 +267,7 @@ function App() {
 
   const [showResult, setShowResult] = useState(false);
   const [prediction, setPrediction] = useState(null);
+  const [liveStatus, setLiveStatus] = useState(null);
 
 
   /* -------------------------------------------------------
@@ -376,9 +377,21 @@ function App() {
       }
 
       const data = await response.json();
-
-
       setPrediction(data);
+
+      // Concurrently query real-time train running status
+      try {
+        const liveRes = await fetch(`${API_URL}/train/${finalTrainNumber}/live`);
+        if (liveRes.ok) {
+          const liveData = await liveRes.json();
+          setLiveStatus(liveData);
+        } else {
+          setLiveStatus(null);
+        }
+      } catch (liveErr) {
+        console.warn("Real-time tracking unavailable:", liveErr);
+        setLiveStatus(null);
+      }
 
       setShowResult(true);
 
@@ -1161,6 +1174,67 @@ function App() {
               </div>
 
             </div>
+
+
+            {/* =============================================
+                LIVE RUNNING STATUS (REAL-TIME INTEGRATION)
+                ============================================= */}
+            {liveStatus && (
+              <div className="live-train-card">
+                <div className="live-card-header">
+                  <div className="live-pulse-badge">
+                    <span className="live-pulse-dot"></span>
+                    LIVE RUNNING STATUS
+                  </div>
+                  <span className="live-source-tag">
+                    {liveStatus.source === "live_api" ? "Live GPS/Signal Feed" : "Timetable Tracking"}
+                    {liveStatus.cached ? " (Cached)" : ""}
+                  </span>
+                </div>
+
+                <div className="live-card-body">
+                  <div className="live-location-col">
+                    <div className="live-subheading">CURRENT / LAST REPORTED STATION</div>
+                    <div className="live-station-headline">
+                      {liveStatus.current_station_name} <span>[{liveStatus.current_station_code}]</span>
+                    </div>
+                    <div className="live-status-desc">{liveStatus.status_message}</div>
+                  </div>
+
+                  <div className="live-delay-badge-col">
+                    <div className="live-delay-pill">
+                      <span className="live-delay-number">
+                        {liveStatus.delay_minutes > 0 ? `+${liveStatus.delay_minutes}` : "0"}
+                      </span>
+                      <span className="live-delay-unit">
+                        {liveStatus.delay_minutes > 0 ? "min late" : "on time"}
+                      </span>
+                    </div>
+                    <div className="live-updated-time">Updated: {liveStatus.last_updated}</div>
+                  </div>
+                </div>
+
+                {liveStatus.upcoming_stations && liveStatus.upcoming_stations.length > 0 && (
+                  <div className="live-upcoming-container">
+                    <div className="live-subheading">UPCOMING STOPS ALONG ROUTE</div>
+                    <div className="live-stops-grid">
+                      {liveStatus.upcoming_stations.slice(0, 4).map((st, idx) => (
+                        <div key={st.station_code || idx} className="live-stop-card">
+                          <div className="live-stop-header">
+                            <span className="live-stop-code">{st.station_code}</span>
+                            <span className="live-stop-name">{st.station_name}</span>
+                          </div>
+                          <div className="live-stop-times">
+                            <span>Sched: <strong>{st.scheduled_arrival}</strong></span>
+                            <span>Live ETA: <strong className="live-eta-highlight">{st.expected_arrival}</strong></span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
 
             {/* =============================================

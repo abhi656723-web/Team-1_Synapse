@@ -8,9 +8,15 @@ Welcome to the backend service of the **AI Train Delay Prediction System**. This
 
 ```text
 backend/
-├── main.py            # FastAPI application with ML startup loader, CORS, and endpoints
-├── requirements.txt   # Python dependencies required to run the backend and ML model
-└── README.md          # Complete documentation and testing guide (this file)
+├── main.py                     # FastAPI application with ML startup loader, CORS, and endpoints
+├── services/                   # Modular service layer
+│   ├── __init__.py             # Python package marker
+│   └── realtime_service.py     # Real-time train tracking client, caching & fallback simulator
+├── .env.example                # Template for environment variables (RapidAPI key)
+├── .env                        # Local configuration file (git-ignored)
+├── test_realtime.py            # Automated end-to-end test suite for backend endpoints
+├── requirements.txt            # Python dependencies required to run backend, ML & real-time service
+└── README.md                   # Complete documentation and testing guide (this file)
 ```
 
 ---
@@ -28,6 +34,18 @@ backend/
   - Reuses the exact timetable lookup, categorical encodings, date features, and model inference from `predict.py`.
   - Calculates scheduled vs. estimated actual times and status advisory.
   - Returns structured JSON with comprehensive error handling (HTTP 400 for invalid dates, HTTP 404 for unknown trains or stations).
+- **Real-Time Live Status Route (`GET /train/{train_number}/live`):**
+  - Fetches live running position, current delay in minutes, expected arrival/departure, and upcoming stops.
+  - Backed by `RealTimeTrainService` with in-memory TTL caching (90 seconds).
+
+### 2. `services/realtime_service.py`
+- Handles asynchronous HTTP requests to external railway data providers via `httpx`.
+- Enforces an in-memory TTL cache (90s) to prevent quota exhaustion and reduce network latency.
+- Provides a high-fidelity fallback simulator based on timetable routes so development and testing are never blocked if the external API is offline or unconfigured.
+
+### 3. `test_realtime.py`
+- Independent automated test suite verifying health, prediction regression, live endpoints, cache hits, and error handling.
+
 
 ### 2. `requirements.txt`
 Specifies the essential Python packages:
@@ -153,6 +171,41 @@ INFO:     Application startup complete.
 #### Error Responses:
 - **HTTP 400 Bad Request:** If date format is invalid (expected `YYYY-MM-DD`).
 - **HTTP 404 Not Found:** If `train_number` is not recognized, or if `station_code` is not along that train's route (includes a list of valid stations for that train in the error detail).
+
+### 4. `GET /train/{train_number}/live` — Real-Time Live Running Status
+
+#### Example Request:
+`GET http://127.0.0.1:8000/train/12623/live`
+
+#### Response Body (`200 OK`):
+```json
+{
+  "train_number": "12623",
+  "train_name": "Chennai Mail",
+  "is_running": true,
+  "current_station_code": "KPD",
+  "current_station_name": "Katpadi Junction",
+  "delay_minutes": 14.5,
+  "status_message": "Departed Katpadi Junction (KPD). Running 14 mins late.",
+  "last_updated": "10:15 AM",
+  "scheduled_arrival": "21:13",
+  "expected_arrival": "21:27",
+  "scheduled_departure": "21:15",
+  "expected_departure": "21:29",
+  "upcoming_stations": [
+    {
+      "station_code": "JTJ",
+      "station_name": "Jolarpettai Junction",
+      "distance_from_source_km": 214.0,
+      "scheduled_arrival": "23:08",
+      "expected_arrival": "23:22"
+    }
+  ],
+  "source": "simulated_timetable",
+  "cached": false
+}
+```
+
 
 ---
 
