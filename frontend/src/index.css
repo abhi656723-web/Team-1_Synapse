@@ -1,28 +1,52 @@
-/* =========================================================
-   SYNAPSE GLOBAL RESET
-   ========================================================= */
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
 
 :root {
+  font-family:
+    "Plus Jakarta Sans",
+    Inter,
+    "Segoe UI",
+    Arial,
+    sans-serif;
+
+  color: #172c58;
+
+  background: #f8faff;
+
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-
 html {
-  width: 100%;
-  min-height: 100%;
-}
+  margin: 0;
+  padding: 0;
 
+  min-width: 320px;
+
+  background: #f8faff;
+}
 
 body {
-  width: 100%;
+  margin: 0;
+  padding: 0;
+
+  min-width: 320px;
   min-height: 100vh;
+
+  background: #f8faff;
 }
 
+button,
+input,
+select {
+  font: inherit;
+}
 
-#root {
-  width: 100%;
-  min-height: 100vh;
+button {
+  -webkit-tap-highlight-color: transparent;
+}
+
+img {
+  max-width: 100%;
 }
